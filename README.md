@@ -23,7 +23,7 @@ SimCortex proceeds in three consecutive stages:
 Binary masks are created from tissue labels, then signed-distance fields are computed and corrected to generate collision-free initial cortical surfaces.
 
 3. **Simultaneous Multiscale Diffeomorphic Surface Reconstruction:**
-Four initial surfaces are jointly refined using multiscale velocity fields to produce smooth, topology-preserving, and collision-free cortical meshes.
+Four initial surfaces are simultaneously deformed using multiscale velocity fields to produce smooth, topology-preserving, and collision-free cortical meshes.
 
 ---
 
