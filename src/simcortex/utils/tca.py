@@ -71,7 +71,7 @@ def check_topology(img, LUT, bit):
             res = True
         else:
             res = False
-        return res
+    return res
 
 
 """ tca_fill
