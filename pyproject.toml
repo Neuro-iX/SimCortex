@@ -58,4 +58,5 @@ where = ["src"]
 [tool.setuptools.package-data]
 simcortex = [
   "configs/**/*.yaml",
+  "utils/critical186LUT.raw.gz",
 ]
