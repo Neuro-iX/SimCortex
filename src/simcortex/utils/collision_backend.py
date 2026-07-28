@@ -2,27 +2,23 @@
 from __future__ import annotations
 
 """
-Single source of truth for FCL-based surface-surface collision diagnostics.
+Shared FCL-based surface-surface collision diagnostics for SimCortex.
 
-This module is intentionally lightweight: it depends only on numpy, trimesh,
-and python-fcl. It is used by 07_eval_fcl_collision_from_manifest.py for:
-
-  1. a cheap boolean collision check; and
-  2. a full contact-count pass with a configurable maximum number of contacts.
+This module provides a boolean collision check and an optional full contact-count
+query with a configurable maximum number of contacts.
 
 Important behavior
 ------------------
-- FCL_MAX_CONTACTS is read from the environment variable
-  SCPP_FCL_MAX_CONTACTS at import time. The 07 script uses this to run worker
-  subprocesses with an increasing contact-count ladder.
-- make_fcl_object does not simplify or decimate meshes. The returned face count
-  is len(tri.faces), so downstream percentages use the original mesh face count.
-- If python-fcl is unavailable or broken, functions return explicit status
-  fields rather than raising opaque errors.
+- FCL_MAX_CONTACTS is read from the SIMCORTEX_FCL_MAX_CONTACTS environment
+  variable when this module is imported.
+- make_fcl_object does not simplify or decimate meshes. Face percentages are
+  therefore calculated using the original mesh face counts.
+- If python-fcl is unavailable or cannot be initialized, the module reports an
+  explicit backend status instead of raising an opaque import error.
 
-These are raw mesh-intersection diagnostics. Same-hemisphere white/pial surfaces
-may contain expected medial-wall contacts depending on the surface definition;
-interpretation should be done downstream.
+These functions report raw mesh-intersection diagnostics. Same-hemisphere
+white/pial surfaces may include medial-wall contacts depending on the surface
+definition, so anatomical interpretation is performed downstream.
 """
 
 import logging
@@ -34,7 +30,7 @@ import trimesh
 
 LOG = logging.getLogger("collision_backend")
 
-COLLISION_BACKEND_SCHEMA_VERSION = "final7_collision_backend_v1.1"
+COLLISION_BACKEND_SCHEMA_VERSION = "simcortex_collision_backend_v1.1"
 
 
 def _read_positive_int_env(name: str, default: int) -> int:
@@ -51,10 +47,12 @@ def _read_positive_int_env(name: str, default: int) -> int:
     return value
 
 
-# The worker subprocesses launched by 07 set this variable before importing this
-# backend. If the number of returned contacts reaches the ceiling, the pair is
-# marked saturated and the counts are lower bounds.
-FCL_MAX_CONTACTS = _read_positive_int_env("SCPP_FCL_MAX_CONTACTS", 2_000_000)
+# If the number of returned contacts reaches this ceiling, the pair is marked
+# as saturated and the reported contact counts are lower bounds.
+FCL_MAX_CONTACTS = _read_positive_int_env(
+    "SIMCORTEX_FCL_MAX_CONTACTS",
+    2_000_000,
+)
 
 try:
     import fcl  # type: ignore  # python-fcl
