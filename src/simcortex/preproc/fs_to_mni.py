@@ -43,7 +43,7 @@ def _require_antspy() -> Any:
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(
             "ANTsPy is required for Stage 1 preprocessing. "
-            "Install it with: pip install antspyx"
+            "Install it with: python -m pip install \"simcortex[preproc]\""
         ) from exc
 
     return ants

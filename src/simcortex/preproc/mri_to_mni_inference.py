@@ -16,11 +16,25 @@ import logging
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-import ants
 import nibabel as nib
 import numpy as np
+
+
+def _require_antspy() -> Any:
+    """Import ANTsPy only when preprocessing is executed."""
+    try:
+        import ants  # type: ignore
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(
+            "ANTsPy is required for Stage 1 preprocessing. "
+            "Install it with: python -m pip install "
+            '"simcortex[preproc]"'
+        ) from exc
+
+    return ants
+
 
 log = logging.getLogger("simcortex.preproc.mri_to_mni_inference")
 
@@ -194,8 +208,9 @@ def convert_to_temp_nifti_if_needed(src: Path, tmpdir: Path, canonicalize_mgz: b
     raise ValueError(f"Unsupported image format: {src}")
 
 
-def save_float32_nifti_like_ants(img: ants.ANTsImage, out_path: Path) -> None:
+def save_float32_nifti_like_ants(img: Any, out_path: Path) -> None:
     """Write an ANTs image as float32 NIfTI without leaving temp files in anat/."""
+    ants = _require_antspy()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ants_write_") as td:
         tmp = Path(td) / "tmp.nii.gz"
@@ -245,6 +260,7 @@ def ants_affine_to_homogeneous_lps(transform_path: Path) -> np.ndarray:
     where c is the fixed transform center. The equivalent homogeneous matrix is:
         y = A @ x + (t + c - A @ c)
     """
+    ants = _require_antspy()
     tx = ants.read_transform(str(transform_path))
     params = np.asarray(tx.parameters, dtype=np.float64)
     fixed = np.asarray(tx.fixed_parameters, dtype=np.float64)
@@ -466,6 +482,8 @@ def preprocess_one_t1w_to_mni(
 
     copied_fwd: list[Path] = []
     copied_inv: list[Path] = []
+
+    ants = _require_antspy()
 
     with tempfile.TemporaryDirectory(prefix="scpp_mri_to_mni_") as td:
         tmpdir = Path(td)

@@ -135,7 +135,11 @@ def test_preprocessing_operation_reports_missing_antspy():
                 "ANTsPy is required for Stage 1 preprocessing"
                 in message
             )
-            assert "pip install antspyx" in message
+            assert (
+                'python -m pip install "simcortex[preproc]"'
+                in message
+            )
+            assert "pip install antspyx" not in message
         else:
             raise AssertionError(
                 "Expected missing ANTsPy RuntimeError"
@@ -144,3 +148,154 @@ def test_preprocessing_operation_reports_missing_antspy():
     )
 
     assert_subprocess_passed(completed)
+
+
+def test_mri_only_preprocessing_module_imports_without_antspy():
+    import subprocess
+    import sys
+    import textwrap
+
+    code = textwrap.dedent(
+        r"""
+        import importlib.abc
+        import sys
+
+
+        class BlockAntsFinder(importlib.abc.MetaPathFinder):
+            def find_spec(
+                self,
+                fullname,
+                path=None,
+                target=None,
+            ):
+                if (
+                    fullname == "ants"
+                    or fullname.startswith("ants.")
+                ):
+                    raise ModuleNotFoundError(
+                        "ANTsPy intentionally blocked "
+                        "for MRI preprocessing import test"
+                    )
+
+                return None
+
+
+        sys.meta_path.insert(
+            0,
+            BlockAntsFinder(),
+        )
+
+        import simcortex.preproc.mri_to_mni_inference
+
+        print(
+            "MRI-only preprocessing import "
+            "without ANTsPy: PASS"
+        )
+        """
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            code,
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, (
+        completed.stdout
+        + "\n"
+        + completed.stderr
+    )
+
+
+def test_mri_only_preprocessing_reports_missing_antspy():
+    import subprocess
+    import sys
+    import textwrap
+
+    code = textwrap.dedent(
+        r"""
+        import importlib.abc
+        import sys
+        from pathlib import Path
+
+
+        class BlockAntsFinder(importlib.abc.MetaPathFinder):
+            def find_spec(
+                self,
+                fullname,
+                path=None,
+                target=None,
+            ):
+                if (
+                    fullname == "ants"
+                    or fullname.startswith("ants.")
+                ):
+                    raise ModuleNotFoundError(
+                        "ANTsPy intentionally blocked "
+                        "for MRI preprocessing runtime test"
+                    )
+
+                return None
+
+
+        sys.meta_path.insert(
+            0,
+            BlockAntsFinder(),
+        )
+
+        from simcortex.preproc.mri_to_mni_inference import (
+            ants_affine_to_homogeneous_lps,
+        )
+
+        try:
+            ants_affine_to_homogeneous_lps(
+                Path("missing-transform.mat")
+            )
+        except RuntimeError as exc:
+            message = str(exc)
+
+            assert (
+                "ANTsPy is required for "
+                "Stage 1 preprocessing"
+                in message
+            )
+            assert (
+                'python -m pip install '
+                '"simcortex[preproc]"'
+                in message
+            )
+            assert (
+                "pip install antspyx"
+                not in message
+            )
+        else:
+            raise AssertionError(
+                "Expected missing ANTsPy RuntimeError"
+            )
+
+        print(
+            "MRI-only preprocessing missing "
+            "ANTsPy message: PASS"
+        )
+        """
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            code,
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, (
+        completed.stdout
+        + "\n"
+        + completed.stderr
+    )
