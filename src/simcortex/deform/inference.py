@@ -34,7 +34,7 @@ def _ses(session_label: str) -> str:
     return s if s.startswith("ses-") else f"ses-{s}"
 
 
-def ensure_derivative_description(out_root: str, name: str = "scpp-deform"):
+def ensure_derivative_description(out_root: str, name: str = "sc-deform"):
     p = os.path.join(out_root, "dataset_description.json")
     if os.path.isfile(p):
         return

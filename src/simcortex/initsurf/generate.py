@@ -40,7 +40,7 @@ from simcortex.initsurf.paths import (
 from simcortex.utils.tca import topology
 
 
-log = logging.getLogger("scpp.initsurf")
+log = logging.getLogger("simcortex.initsurf")
 _TOPO_CORRECT = None
 
 
@@ -101,7 +101,7 @@ def save_nifti(
 
 def write_dataset_description(
     root: str,
-    name: str = "scpp-initsurf",
+    name: str = "sc-initsurf",
     version: str = "0.3",
 ) -> None:
     path = os.path.join(root, "dataset_description.json")
@@ -1157,7 +1157,7 @@ def main(cfg: DictConfig) -> None:
 
         write_dataset_description(
             str(single_out_root),
-            name="scpp-initsurf",
+            name="sc-initsurf",
             version=dataset_version,
         )
 
@@ -1198,7 +1198,7 @@ def main(cfg: DictConfig) -> None:
         for ds_key in dataset_keys:
             write_dataset_description(
                 str(out_roots_map[ds_key]),
-                name="scpp-initsurf",
+                name="sc-initsurf",
                 version=dataset_version,
             )
 

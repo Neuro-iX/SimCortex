@@ -39,7 +39,7 @@ def _require_antspy() -> Any:
 log = logging.getLogger("simcortex.preproc.mri_to_mni_inference")
 
 SUPPORTED_EXTS = (".nii.gz", ".nii", ".mgz", ".mgh")
-PREPROC_DERIVATIVE_NAME = "scpp-preproc-0.1"
+PREPROC_DERIVATIVE_NAME = "sc-preproc-0.1"
 LPS_TO_RAS = np.diag([-1.0, -1.0, 1.0, 1.0]).astype(np.float64)
 
 
@@ -485,7 +485,7 @@ def preprocess_one_t1w_to_mni(
 
     ants = _require_antspy()
 
-    with tempfile.TemporaryDirectory(prefix="scpp_mri_to_mni_") as td:
+    with tempfile.TemporaryDirectory(prefix="simcortex_mri_to_mni_") as td:
         tmpdir = Path(td)
         moving_nifti = convert_to_temp_nifti_if_needed(t1w_path, tmpdir, canonicalize_mgz=canonicalize_mgz)
 
