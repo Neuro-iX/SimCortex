@@ -1,7 +1,7 @@
 # SimCortex v2.0 Docker Guide
 
 This document explains how to build and run the **SimCortex v2.0** Docker image.
-It focuses on containerized execution of the `scpp` CLI for **Stage 2 (Segmentation)**, **Stage 3 (InitSurf)**, and **Stage 4 (Deform)**. For the full pipeline itself—stage logic, expected inputs and outputs, naming conventions, and workflow order—see the repository root `README.md`.
+It documents containerized execution of the `simcortex` CLI for **Stage 1 (Preprocessing)**, **Stage 2 (Segmentation)**, **Stage 3 (InitSurf)**, and **Stage 4 (Deform)**. For stage logic, expected inputs and outputs, naming conventions, and workflow order, see the repository root `README.md`.
 
 The Docker image is intended to provide a reproducible runtime for SimCortex, including the Python / CUDA / PyTorch / PyTorch3D stack used by the project.
 
@@ -10,7 +10,7 @@ The Docker image is intended to provide a reproducible runtime for SimCortex, in
 ## Table of Contents
 
 - [Overview](#overview)
-- [Published Resources](#published-resources)
+- [Project Resources](#project-resources)
 - [Image Tags](#image-tags)
 - [Build the Image](#build-the-image)
 - [Quick Validation](#quick-validation)
@@ -29,28 +29,31 @@ The Docker image is intended to provide a reproducible runtime for SimCortex, in
 
 ## Overview
 
-The Docker image allows users to run SimCortex without recreating the full local environment manually. This is useful for:
+The Docker image provides a validated runtime for all four SimCortex stages:
 
-- reproducibility across workstations and servers
-- simpler setup for collaborators
-- preserving a validated PyTorch / PyTorch3D stack
-- CLI-based workflows where datasets and outputs are mounted from the host
-
-At the moment, the main published Docker image is intentionally focused on the **PyTorch / PyTorch3D-based stages** of the pipeline:
-
+- **Stage 1 — Preprocessing**
 - **Stage 2 — Segmentation**
 - **Stage 3 — InitSurf**
 - **Stage 4 — Deform**
 
-**Stage 1 — FreeSurfer to MNI152 preprocessing** is typically run outside Docker because it depends on external tools such as **FreeSurfer** and **NiftyReg**, and packaging those tools into the main image would substantially increase image size and maintenance burden.
+Stage 1 does not execute FreeSurfer. It consumes existing FreeSurfer subject directories mounted from the host and performs N4 correction, linear registration, image resampling, and surface conversion with ANTsPy, nibabel, and the SimCortex Python implementation.
 
-The image is not intended to replace the project README. Instead, it provides a container runtime for the **Segmentation**, **InitSurf**, and **Deform** commands documented there. In the current recommended workflow, **Preprocessing (Stage 1)** is run outside the main Docker image.
+The image does not require the external NiftyReg command-line tools used by older preprocessing implementations.
+
+The container is useful for:
+
+- reproducibility across workstations and servers
+- simpler setup for collaborators
+- preserving the validated CUDA, PyTorch, and PyTorch3D stack
+- CLI workflows with explicitly mounted datasets and outputs
+
+The Docker guide complements rather than replaces the project `README.md`.
 
 ---
 
-## Published Resources
+## Project Resources
 
-- **Docker Hub:** [kavehmoradkhani/simcortex](https://hub.docker.com/r/kavehmoradkhani/simcortex)
+- **Docker Hub target repository:** [kavehmoradkhani/simcortex](https://hub.docker.com/r/kavehmoradkhani/simcortex)
 - **Zenodo pre-trained weights and splits:** [SimCortex v2.0: Pre-trained Models and Dataset Splits](https://zenodo.org/records/18974730)
 
 ---
@@ -69,7 +72,7 @@ After publishing to Docker Hub, the tag can be:
 kavehmoradkhani/simcortex:2.0.0
 ```
 
-Official repository:
+Target Docker Hub repository:
 
 ```text
 https://hub.docker.com/r/kavehmoradkhani/simcortex
@@ -81,45 +84,91 @@ Keep versioned tags even if you later publish `latest`, so users can pin an exac
 
 ## Build the Image
 
+### Required environment archive
+
+A local build requires the separately supplied `docker/simcortex-env.tar.gz` archive.
+The archive is approximately 4.1 GB and is intentionally excluded from Git.
+
+Place it at the following path before starting the build:
+
+```text
+docker/simcortex-env.tar.gz
+```
+
+Validate the archive:
+
+```bash
+test -f docker/simcortex-env.tar.gz
+
+sha256sum docker/simcortex-env.tar.gz
+
+tar -tzf docker/simcortex-env.tar.gz >/dev/null
+echo "Docker environment archive: PASS"
+```
+
+Expected SHA256:
+
+```text
+88dc6be16aed3d756314fca7acd5af7732da2774643d11e2327f1917ee165b63  docker/simcortex-env.tar.gz
+```
+
+The validated archive contains the project runtime, including Python 3.10, PyTorch 2.1.0, CUDA 12.1, PyTorch3D 0.7.8, MONAI 1.3.2, ANTsPy 0.6.1, python-fcl 0.7.0.10, and PyMeshLab 2025.7.post1.
+
+### Build command
+
 From the repository root:
 
 ```bash
 docker build -f docker/Dockerfile -t simcortex:2.0.0 .
 ```
 
-The image is expected to bundle the SimCortex runtime stack, including the packaged `scpp` CLI and Hydra YAML configs.
+During the build, the Dockerfile copies the environment archive, extracts it under `/opt/conda-env`, runs `conda-unpack`, copies the SimCortex repository, and installs the package without resolving dependencies again.
+
+The resulting image exposes the packaged `simcortex` CLI and the installed Hydra configuration files.
 
 ---
 
 ## Quick Validation
 
-Show the main CLI:
+After building `simcortex:2.0.0`, validate the main CLI and all four stage command groups.
+
+### Main CLI
 
 ```bash
 docker run --rm simcortex:2.0.0 simcortex --help
 ```
 
-Show stage help:
+### Stage command groups
 
 ```bash
+docker run --rm simcortex:2.0.0 simcortex fs-to-mni --help
+
 docker run --rm simcortex:2.0.0 simcortex seg --help
+
 docker run --rm simcortex:2.0.0 simcortex initsurf --help
+
 docker run --rm simcortex:2.0.0 simcortex deform --help
 ```
 
-Verify key Python packages:
+### Python dependency imports
+
+Verify that the principal preprocessing, segmentation, surface-processing, collision, and deep-learning dependencies import successfully:
 
 ```bash
 docker run --rm simcortex:2.0.0 \
-  python -c "import torch, pytorch3d, pymeshlab; print(torch.__version__)"
+  python -c "import ants, fcl, monai, nibabel, pymeshlab, pytorch3d, simcortex, torch, torchvision; print('Dependency imports: PASS')"
 ```
 
-Verify GPU visibility:
+### GPU access
+
+On a host with the NVIDIA Container Toolkit, verify that the container can access the requested GPUs:
 
 ```bash
 docker run --rm --gpus all simcortex:2.0.0 \
-  python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.device_count())"
+  python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('GPU count:', torch.cuda.device_count()); raise SystemExit(0 if torch.cuda.is_available() else 1)"
 ```
+
+The CLI-help and dependency-import checks do not require a GPU. Segmentation and deformation workflows normally require GPU access.
 
 ---
 
@@ -230,9 +279,9 @@ docker run --rm --gpus all \
   simcortex initsurf generate \
   dataset.split_file=/data/splits/dataset_split.csv \
   dataset.split_name=all \
-  dataset.roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-preproc-0.1 \
-  dataset.seg_roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-seg-0.1 \
-  outputs.out_roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-initsurf-0.1 \
+  dataset.roots.HCP_YA=/data/hcpya-u100/derivatives/sc-preproc \
+  dataset.seg_roots.HCP_YA=/data/hcpya-u100/derivatives/sc-seg \
+  outputs.out_roots.HCP_YA=/data/hcpya-u100/derivatives/sc-initsurf \
   outputs.log_dir=/runs/initsurf/exp01/logs
 ```
 
@@ -248,35 +297,35 @@ Print the package location:
 
 ```bash
 docker run --rm simcortex:2.0.0 \
-  python -c "import simcortexpp, pathlib; print(pathlib.Path(simcortexpp.__file__).resolve().parent)"
+  python -c "import simcortex, pathlib; print(pathlib.Path(simcortex.__file__).resolve().parent)"
 ```
 
 Print an InitSurf config to stdout:
 
 ```bash
 docker run --rm simcortex:2.0.0 \
-  python -c "import simcortexpp, pathlib; p=pathlib.Path(simcortexpp.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; print(p.read_text())"
+  python -c "import simcortex, pathlib; p=pathlib.Path(simcortex.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; print(p.read_text())"
 ```
 
 Print a Deform train config to stdout:
 
 ```bash
 docker run --rm simcortex:2.0.0 \
-  python -c "import simcortexpp, pathlib; p=pathlib.Path(simcortexpp.__file__).resolve().parent/'configs'/'deform'/'train.yaml'; print(p.read_text())"
+  python -c "import simcortex, pathlib; p=pathlib.Path(simcortex.__file__).resolve().parent/'configs'/'deform'/'train.yaml'; print(p.read_text())"
 ```
 
 Save a packaged config to the host:
 
 ```bash
-mkdir -p /tmp/scpp_cfg
+mkdir -p /tmp/simcortex_cfg
 
 docker run --rm \
-  -v /tmp/scpp_cfg:/out \
+  -v /tmp/simcortex_cfg:/out \
   simcortex:2.0.0 \
-  python -c "import simcortexpp, pathlib; p=pathlib.Path(simcortexpp.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; open('/out/generate.yaml','w').write(p.read_text())"
+  python -c "import simcortex, pathlib; p=pathlib.Path(simcortex.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; open('/out/generate.yaml','w').write(p.read_text())"
 ```
 
-After that, edit `/tmp/scpp_cfg/generate.yaml` on the host.
+After that, edit `/tmp/simcortex_cfg/generate.yaml` on the host.
 
 ---
 
@@ -304,7 +353,34 @@ If your stage does not use a `user_config` field, override individual values dir
 
 ## Examples by Stage
 
-> Note: In the current recommended setup, **Stage 1 (FreeSurfer to MNI152 preprocessing)** is run outside the main Docker image. The examples below therefore start from **Stage 2** and assume preprocessing outputs already exist under `scpp-preproc-*`.
+> **Stage 1 is supported by the Docker image.** It consumes existing FreeSurfer subject directories mounted from the host and writes preprocessing outputs under `sc-preproc`. All stages use the canonical derivative directories `sc-preproc`, `sc-seg`, `sc-initsurf`, and `sc-deform`.
+
+### Stage 1 — FreeSurfer to MNI152 preprocessing
+
+Stage 1 consumes existing FreeSurfer outputs mounted from the host. It does not run FreeSurfer itself and does not require GPU access.
+
+The example below mounts the dataset root as writable and mounts the MNI152 template separately as read-only.
+
+```bash
+docker run --rm \
+  --user $(id -u):$(id -g) \
+  -e HOME=/tmp \
+  -e UMASK=002 \
+  -v /home/<user>/datasets:/data \
+  -v /home/<user>/templates:/templates:ro \
+  simcortex:2.0.0 \
+  simcortex fs-to-mni \
+  --freesurfer-root /data/<dataset>/derivatives/freesurfer-7.4.1 \
+  --out-deriv-root /data/<dataset>/derivatives/sc-preproc \
+  --mni-template /templates/MNI152_T1_1mm.nii.gz \
+  --transform-type affine \
+  --n4 \
+  --with-aparc-aseg \
+  --with-filled \
+  -v
+```
+
+The FreeSurfer root must already contain subject directories with the required `mri/` and `surf/` outputs.
 
 ### Stage 2 — Segmentation train
 
@@ -317,7 +393,7 @@ docker run --rm --gpus all \
   -v /home/<user>/runs:/runs \
   simcortex:2.0.0 \
   simcortex seg train \
-  dataset.path=/data/<dataset>/derivatives/scpp-preproc-0.1 \
+  dataset.path=/data/<dataset>/derivatives/sc-preproc \
   dataset.split_file=/data/splits/<dataset>_split.csv \
   outputs.root=/runs/seg/exp01
 ```
@@ -332,11 +408,11 @@ docker run --rm --gpus all \
   -v /home/<user>/datasets:/data \
   simcortex:2.0.0 \
   simcortex seg infer \
-  dataset.path=/data/<dataset>/derivatives/scpp-preproc-0.1 \
+  dataset.path=/data/<dataset>/derivatives/sc-preproc \
   dataset.split_file=/data/splits/<dataset>_split.csv \
   dataset.split_name=test \
   model.ckpt_path=/data/checkpoints/seg_best_dice.pt \
-  outputs.out_root=/data/<dataset>/derivatives/scpp-seg-0.1
+  outputs.out_root=/data/<dataset>/derivatives/sc-seg
 ```
 
 ### Stage 3 — InitSurf
@@ -352,9 +428,9 @@ docker run --rm --gpus all \
   simcortex initsurf generate \
   dataset.split_file=/data/splits/dataset_split.csv \
   dataset.split_name=all \
-  dataset.roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-preproc-0.1 \
-  dataset.seg_roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-seg-0.1 \
-  outputs.out_roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-initsurf-0.1 \
+  dataset.roots.HCP_YA=/data/hcpya-u100/derivatives/sc-preproc \
+  dataset.seg_roots.HCP_YA=/data/hcpya-u100/derivatives/sc-seg \
+  outputs.out_roots.HCP_YA=/data/hcpya-u100/derivatives/sc-initsurf \
   outputs.log_dir=/runs/initsurf/exp01/logs
 ```
 
