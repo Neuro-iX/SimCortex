@@ -39,8 +39,8 @@ from nibabel.freesurfer.io import read_geometry
 def _require_antspy() -> Any:
     """Import ANTsPy only when Stage 1 functionality is executed."""
     try:
-        import ants  # type: ignore
-    except Exception as exc:  # pragma: no cover
+        import ants
+    except Exception as exc: 
         raise RuntimeError(
             "ANTsPy is required for Stage 1 preprocessing. "
             "Install it with: python -m pip install \"simcortex[preproc]\""
@@ -49,7 +49,7 @@ def _require_antspy() -> Any:
     return ants
 
 APP_NAME = "SimCortex-Preproc-ANTsPy"
-__version__ = "0.1"
+__version__ = "2.0.0"
 PIPELINE_NAME = "sc-preproc"
 RAS_TO_LPS_4 = np.diag([-1.0, -1.0, 1.0, 1.0]).astype(np.float64)
 
