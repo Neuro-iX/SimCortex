@@ -39,7 +39,7 @@ def _require_antspy() -> Any:
 log = logging.getLogger("simcortex.preproc.mri_to_mni_inference")
 
 SUPPORTED_EXTS = (".nii.gz", ".nii", ".mgz", ".mgh")
-PREPROC_DERIVATIVE_NAME = "sc-preproc-0.1"
+PREPROC_DERIVATIVE_NAME = "sc-preproc"
 LPS_TO_RAS = np.diag([-1.0, -1.0, 1.0, 1.0]).astype(np.float64)
 
 

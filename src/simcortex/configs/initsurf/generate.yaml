@@ -13,20 +13,20 @@ dataset:
 
   # Multi-dataset mode.
   roots:
-    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-preproc-0.2
-    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-preproc-0.2
+    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-preproc
+    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-preproc
 
   seg_roots:
-    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-seg-0.2
-    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-seg-0.2
+    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-seg
+    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-seg
 
 outputs:
   out_root: null
 
   # Multi-dataset mode outputs.
   out_roots:
-    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-initsurf-0.2
-    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-initsurf-0.2
+    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-initsurf
+    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-initsurf
 
   log_dir: /project/hippocampus/common/kaveh/workspace/simcortex-runs/initsurf/exp02_hcpya+oasis1/logs_generate
   dataset_version: "0.2"

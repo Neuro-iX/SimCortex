@@ -10,6 +10,7 @@ from simcortex.preproc.mri_to_mni_inference import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 ACTIVE_CODE_FILES = (
+    Path("scripts/run_pipeline.py"),
     Path("src/simcortex/preproc/fs_to_mni.py"),
     Path(
         "src/simcortex/preproc/"
@@ -17,32 +18,46 @@ ACTIVE_CODE_FILES = (
     ),
     Path("src/simcortex/initsurf/generate.py"),
     Path("src/simcortex/deform/inference.py"),
+    Path(
+        "src/simcortex/deform/data/"
+        "dataloader.py"
+    ),
 )
 
-DERIVATIVE_RUN_PATTERN = re.compile(
-    r"^sc-"
-    r"(preproc|seg|initsurf|deform)-"
-    r"[0-9]+\.[0-9]+$"
-)
+CANONICAL_DERIVATIVE_NAMES = {
+    "sc-preproc",
+    "sc-seg",
+    "sc-initsurf",
+    "sc-deform",
+}
 
 PIPELINE_ROOT_PATTERN = re.compile(
-    r"\bsc-"
-    r"(preproc|seg|initsurf|deform)-"
-    r"([0-9]+\.[0-9]+)\b"
+    r'cfg\.work_root / "'
+    r'(sc-(?:preproc|seg|initsurf|deform))'
+    r'"'
 )
 
+VERSIONED_DERIVATIVE_PATTERN = re.compile(
+    r'\b(?:sc|scpp|simcortex)-'
+    r'(?:preproc|seg|initsurf|deform)'
+    r'(?:-[A-Za-z0-9_.+]+)*-'
+    r'[0-9]+\.[0-9]+\b'
+)
 
-def test_preprocessing_names_use_sc_namespace() -> None:
-    assert DERIVATIVE_RUN_PATTERN.fullmatch(
-        PIPELINE_NAME
-    )
+LEGACY_DERIVATIVE_NAMESPACE_PATTERN = re.compile(
+    r'\b(?:scpp|simcortex)-'
+    r'(?:preproc|seg|initsurf|deform)\b'
+)
 
-    assert DERIVATIVE_RUN_PATTERN.fullmatch(
+def test_preprocessing_names_are_canonical() -> None:
+    assert PIPELINE_NAME == "sc-preproc"
+    assert (
         PREPROC_DERIVATIVE_NAME
+        == "sc-preproc"
     )
 
 
-def test_full_pipeline_defines_all_stage_roots() -> None:
+def test_full_pipeline_uses_canonical_stage_roots() -> None:
     source = (
         REPOSITORY_ROOT
         / "scripts"
@@ -51,24 +66,18 @@ def test_full_pipeline_defines_all_stage_roots() -> None:
         encoding="utf-8",
     )
 
-    matches = PIPELINE_ROOT_PATTERN.findall(
-        source
+    roots = set(
+        PIPELINE_ROOT_PATTERN.findall(source)
     )
 
-    stages = {
-        stage
-        for stage, _run_label in matches
-    }
-
-    assert stages == {
-        "preproc",
-        "seg",
-        "initsurf",
-        "deform",
-    }
+    assert roots == CANONICAL_DERIVATIVE_NAMES
+    assert (
+        VERSIONED_DERIVATIVE_PATTERN.search(source)
+        is None
+    )
 
 
-def test_active_code_contains_no_legacy_scpp_identifier() -> None:
+def test_active_code_has_no_legacy_or_versioned_roots() -> None:
     for relative_path in ACTIVE_CODE_FILES:
         source = (
             REPOSITORY_ROOT
@@ -77,7 +86,20 @@ def test_active_code_contains_no_legacy_scpp_identifier() -> None:
             encoding="utf-8",
         )
 
-        assert "scpp" not in source, (
-            "Legacy scpp identifier remains in "
+        assert (
+            LEGACY_DERIVATIVE_NAMESPACE_PATTERN.search(
+                source
+            )
+            is None
+        ), (
+            "Legacy derivative namespace remains in "
+            f"{relative_path}"
+        )
+
+        assert (
+            VERSIONED_DERIVATIVE_PATTERN.search(source)
+            is None
+        ), (
+            "Versioned derivative root remains in "
             f"{relative_path}"
         )

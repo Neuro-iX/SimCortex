@@ -12,8 +12,8 @@ dataset:
   split_file: /project/hippocampus/common/kaveh/workspace/datasets/splits/dataset_split.csv
 
   roots:
-    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-preproc-0.2
-    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-preproc-0.2
+    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-preproc
+    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-preproc
 
   train_split: train
   val_split: val
