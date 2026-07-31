@@ -8,6 +8,7 @@ import pytest
 import simcortex.initsurf.generate as generate_module
 from simcortex.initsurf.generate import (
     _generate_subject,
+    _run_jobs,
     _status_counts,
     _validate_params,
     expected_output_paths,
@@ -218,6 +219,68 @@ def test_existing_complete_subject_is_skipped(
     )
 
     assert result["status"] == "skipped_existing"
+
+
+def test_worker_pool_recycles_after_configured_task_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = {}
+
+    class FakePool:
+        def __init__(self, *, processes, maxtasksperchild):
+            captured["processes"] = processes
+            captured["maxtasksperchild"] = maxtasksperchild
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def imap_unordered(self, function, jobs, chunksize):
+            captured["chunksize"] = chunksize
+            return iter(function(job) for job in reversed(list(jobs)))
+
+    class FakeContext:
+        Pool = FakePool
+
+    monkeypatch.setattr(
+        generate_module.mp,
+        "get_context",
+        lambda method: FakeContext(),
+    )
+    monkeypatch.setattr(
+        generate_module,
+        "_generate_subject_from_job",
+        lambda job: {
+            "status": "ok",
+            "subject_id": job["subject_id"],
+            "ds_key": "TEST",
+            "elapsed": 0.0,
+            "wm_final_level": 0.0,
+            "pial_l": 0.0,
+            "pial_r": 0.0,
+        },
+    )
+
+    results = _run_jobs(
+        [
+            {"subject_id": "sub-0001"},
+            {"subject_id": "sub-0002"},
+        ],
+        n_workers=2,
+        max_tasks_per_worker=1,
+    )
+
+    assert captured == {
+        "processes": 2,
+        "maxtasksperchild": 1,
+        "chunksize": 1,
+    }
+    assert {result["subject_id"] for result in results} == {
+        "sub-0001",
+        "sub-0002",
+    }
 
 
 def test_unknown_status_counts_as_failure() -> None:

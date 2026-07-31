@@ -9,7 +9,6 @@ import shutil
 import tempfile
 import time
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Callable, Dict, List, Optional, Tuple, Any
 from pathlib import Path
 
@@ -1293,46 +1292,51 @@ def _status_counts(results: List[Dict[str, Any]]) -> Tuple[int, int, int]:
     return ok, skipped_existing, failed
 
 
-def _run_jobs(jobs: List[Dict[str, Any]], n_workers: int) -> List[Dict[str, Any]]:
+def _run_jobs(
+    jobs: List[Dict[str, Any]],
+    n_workers: int,
+    max_tasks_per_worker: int,
+) -> List[Dict[str, Any]]:
+    """Run InitSurf jobs while recycling workers to release native memory."""
+    if n_workers < 1:
+        raise ValueError("n_workers must be >= 1")
+    if max_tasks_per_worker < 1:
+        raise ValueError("max_tasks_per_worker must be >= 1")
+
     results: List[Dict[str, Any]] = []
 
-    if n_workers <= 1:
-        log.info("InitSurf execution: serial")
-        with tqdm(total=len(jobs), desc="InitSurf", unit="subj") as pbar:
-            for job in jobs:
-                result = _generate_subject_from_job(job)
-                _log_result_summary(result)
-                results.append(result)
-
-                ok, skipped_existing, failed = _status_counts(results)
-                pbar.set_postfix_str(
-                    f"ok={ok} skipped_existing={skipped_existing} failed={failed}"
-                )
-                pbar.update(1)
+    if not jobs:
         return results
 
-    log.info(f"InitSurf execution: multiprocessing with n_workers={n_workers}")
+    # Keep a one-subject smoke test simple and easy to debug. Multi-subject runs,
+    # including n_workers=1 runs, use a recycling worker pool so native memory
+    # from python-fcl, trimesh, PyTorch, SciPy, and NumPy is returned to the OS.
+    if len(jobs) == 1:
+        log.info("InitSurf execution: serial one-subject run")
+        result = _generate_subject_from_job(jobs[0])
+        _log_result_summary(result)
+        return [result]
+
+    log.info(
+        "InitSurf execution: multiprocessing with n_workers=%d, "
+        "max_tasks_per_worker=%d",
+        n_workers,
+        max_tasks_per_worker,
+    )
     ctx = mp.get_context("spawn")
 
-    with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as executor:
-        futures = {
-            executor.submit(_generate_subject_from_job, job): job
-            for job in jobs
-        }
+    with ctx.Pool(
+        processes=n_workers,
+        maxtasksperchild=max_tasks_per_worker,
+    ) as pool:
+        results_iter = pool.imap_unordered(
+            _generate_subject_from_job,
+            jobs,
+            chunksize=1,
+        )
 
-        with tqdm(total=len(futures), desc="InitSurf", unit="subj") as pbar:
-            for fut in as_completed(futures):
-                job = futures[fut]
-                try:
-                    result = fut.result()
-                except Exception as exc:
-                    result = {
-                        "status": "failed",
-                        "subject_id": job.get("subject_id", "UNKNOWN"),
-                        "ds_key": job.get("ds_key", "UNKNOWN"),
-                        "reason": repr(exc),
-                        "traceback": traceback.format_exc(),
-                    }
+        with tqdm(total=len(jobs), desc="InitSurf", unit="subj") as pbar:
+            for result in results_iter:
                 _log_result_summary(result)
                 results.append(result)
 
@@ -1404,8 +1408,13 @@ def main(cfg: DictConfig) -> None:
     _validate_params(params)
 
     n_workers = int(OmegaConf.select(cfg, "n_workers", default=1))
+    max_tasks_per_worker = int(
+        OmegaConf.select(cfg, "max_tasks_per_worker", default=1)
+    )
     if n_workers < 1:
         raise ValueError("n_workers must be >= 1")
+    if max_tasks_per_worker < 1:
+        raise ValueError("max_tasks_per_worker must be >= 1")
 
     _validate_runtime_dependencies()
 
@@ -1481,7 +1490,11 @@ def main(cfg: DictConfig) -> None:
             })
 
     t0 = time.time()
-    results = _run_jobs(jobs, n_workers=n_workers)
+    results = _run_jobs(
+        jobs,
+        n_workers=n_workers,
+        max_tasks_per_worker=max_tasks_per_worker,
+    )
     elapsed = time.time() - t0
 
     ok, skipped_existing, failed = _status_counts(results)

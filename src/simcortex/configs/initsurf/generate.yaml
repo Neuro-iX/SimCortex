@@ -2,6 +2,9 @@
 
 n_workers: 1
 
+# Recycle each worker after this many subjects to release native allocations.
+max_tasks_per_worker: 1
+
 dataset:
   path: null
   seg_root: null
