@@ -42,6 +42,7 @@ dependencies = [
 [project.optional-dependencies]
 preproc = ["antspyx>=0.6.1"]
 seg = ["monai>=1.3"]
+initsurf = ["python-fcl"]
 deform-metrics = ["python-fcl", "pymeshlab"]
 torch = ["torch>=2.0"]
 

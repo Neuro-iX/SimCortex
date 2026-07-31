@@ -1,3 +1,5 @@
+"""Canonical path helpers for InitSurf inputs and outputs."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,12 +13,6 @@ def _sub_id(subject: str) -> str:
 def _ses_id(ses: str = "01") -> str:
     s = str(ses).strip()
     return s if s.startswith("ses-") else f"ses-{s}"
-
-
-def _stem(subject: str, ses: str = "01") -> str:
-    sub = _sub_id(subject)
-    ses_id = _ses_id(ses)
-    return f"{sub}_{ses_id}"
 
 
 def anat_dir(root: str | Path, subject: str, ses: str = "01") -> Path:
