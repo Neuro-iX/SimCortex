@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
+import simcortex.initsurf.generate as generate_module
 from simcortex.initsurf.generate import (
+    _generate_subject,
     _status_counts,
     _validate_params,
     expected_output_paths,
@@ -31,6 +33,18 @@ DEFAULT_PARAMS = {
     "pial_grid_step": 0.1,
     "pial_absolute_floor": 0.1,
 }
+
+
+def _write_complete_outputs(
+    root: str,
+    subject: str = "sub-0001",
+    ses: str = "01",
+    space: str = "MNI152",
+) -> None:
+    for raw_path in expected_output_paths(root, subject, ses, space):
+        path = Path(raw_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
 
 
 def test_default_parameters_are_valid() -> None:
@@ -78,6 +92,132 @@ def test_completion_requires_success_marker(tmp_path: Path) -> None:
         "01",
         "MNI152",
     )
+
+
+def test_subject_outputs_are_promoted_only_after_staged_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_root = tmp_path / "sc-initsurf"
+
+    def fake_impl(**kwargs):
+        _write_complete_outputs(
+            kwargs["out_root"],
+            kwargs["subject_id"],
+            kwargs["ses"],
+            kwargs["space"],
+        )
+        return {
+            "status": "ok",
+            "subject_id": kwargs["subject_id"],
+            "ds_key": kwargs["ds_key"],
+        }
+
+    monkeypatch.setattr(
+        generate_module,
+        "_generate_subject_impl",
+        fake_impl,
+    )
+
+    result = _generate_subject(
+        subject_id="sub-0001",
+        ds_key="TEST",
+        preproc_root="/unused/preproc",
+        seg_root="/unused/seg",
+        out_root=str(out_root),
+        ses="01",
+        space="MNI152",
+        params=dict(DEFAULT_PARAMS),
+    )
+
+    assert result["status"] == "ok"
+    assert outputs_complete(
+        str(out_root),
+        "sub-0001",
+        "01",
+        "MNI152",
+    )
+    assert not list(out_root.glob(".initsurf-stage-*"))
+
+
+def test_failed_subject_leaves_existing_output_untouched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_root = tmp_path / "sc-initsurf"
+    existing = (
+        out_root
+        / "sub-0001"
+        / "ses-01"
+        / "anat"
+        / "existing.txt"
+    )
+    existing.parent.mkdir(parents=True, exist_ok=True)
+    existing.write_text("keep\n", encoding="utf-8")
+
+    def failing_impl(**kwargs):
+        staged_file = (
+            Path(kwargs["out_root"])
+            / kwargs["subject_id"]
+            / f"ses-{kwargs['ses']}"
+            / "anat"
+            / "partial.txt"
+        )
+        staged_file.parent.mkdir(parents=True, exist_ok=True)
+        staged_file.write_text("partial\n", encoding="utf-8")
+        raise RuntimeError("synthetic failure")
+
+    monkeypatch.setattr(
+        generate_module,
+        "_generate_subject_impl",
+        failing_impl,
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic failure"):
+        _generate_subject(
+            subject_id="sub-0001",
+            ds_key="TEST",
+            preproc_root="/unused/preproc",
+            seg_root="/unused/seg",
+            out_root=str(out_root),
+            ses="01",
+            space="MNI152",
+            params=dict(DEFAULT_PARAMS),
+        )
+
+    assert existing.read_text(encoding="utf-8") == "keep\n"
+    assert not list(out_root.glob(".initsurf-stage-*"))
+    assert not list(out_root.rglob("partial.txt"))
+
+
+def test_existing_complete_subject_is_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_root = tmp_path / "sc-initsurf"
+    _write_complete_outputs(str(out_root))
+
+    def unexpected_impl(**kwargs):
+        raise AssertionError("implementation should not run")
+
+    monkeypatch.setattr(
+        generate_module,
+        "_generate_subject_impl",
+        unexpected_impl,
+    )
+
+    result = _generate_subject(
+        subject_id="sub-0001",
+        ds_key="TEST",
+        preproc_root="/unused/preproc",
+        seg_root="/unused/seg",
+        out_root=str(out_root),
+        ses="01",
+        space="MNI152",
+        params=dict(DEFAULT_PARAMS),
+    )
+
+    assert result["status"] == "skipped_existing"
 
 
 def test_unknown_status_counts_as_failure() -> None:

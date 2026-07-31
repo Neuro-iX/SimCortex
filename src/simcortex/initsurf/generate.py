@@ -5,6 +5,8 @@ import json
 import logging
 import multiprocessing as mp
 import os
+import shutil
+import tempfile
 import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -849,7 +851,7 @@ def free_collision_pial_offset_grid(
         f"Consider lowering pial_absolute_floor or checking WM/pial field quality."
     )
 
-def _generate_subject(
+def _generate_subject_impl(
     subject_id: str,
     ds_key: str,
     preproc_root: str,
@@ -876,19 +878,8 @@ def _generate_subject(
     pial_grid_step = float(params["pial_grid_step"])
     pial_absolute_floor = float(params.get("pial_absolute_floor", 0.1))
 
-    overwrite = bool(params.get("overwrite", False))
     validate_affine = bool(params.get("validate_affine", True))
     affine_atol = float(params.get("affine_atol", 1e-4))
-
-    if (not overwrite) and outputs_complete(out_root, subject_id, ses, space):
-        msg = "All expected InitSurf outputs already exist; skipping because overwrite=false."
-        log.info(f"[{ds_key}][{subject_id}] {msg}")
-        return {
-            "status": "skipped_existing",
-            "reason": msg,
-            "subject_id": subject_id,
-            "ds_key": ds_key,
-        }
 
     brain_path = t1_mni_path(preproc_root, subject_id, ses=ses, space=space)
     pred_path = seg9_dseg_path(seg_root, subject_id, ses=ses, space=space)
@@ -1097,6 +1088,147 @@ def _generate_subject(
         "pial_r_wm_col": bool(pial_r_wm_col),
         "pial_lr_col": bool(pial_lr_col),
     }
+
+
+def _subject_session_dir(
+    root: str,
+    subject_id: str,
+    ses: str,
+) -> Path:
+    return Path(root) / subject_id / f"ses-{ses}"
+
+
+def _promote_staged_subject(
+    staged_root: str,
+    out_root: str,
+    subject_id: str,
+    ses: str,
+) -> None:
+    """Replace one subject/session only after staged outputs are complete."""
+    staged_session = _subject_session_dir(staged_root, subject_id, ses)
+    final_session = _subject_session_dir(out_root, subject_id, ses)
+
+    if not staged_session.is_dir():
+        raise RuntimeError(
+            f"Staged InitSurf session directory is missing: {staged_session}"
+        )
+
+    final_session.parent.mkdir(parents=True, exist_ok=True)
+
+    if not final_session.exists():
+        os.replace(staged_session, final_session)
+        return
+
+    backup_parent = Path(
+        tempfile.mkdtemp(
+            prefix=f".initsurf-backup-{subject_id}-ses-{ses}-",
+            dir=str(Path(out_root)),
+        )
+    )
+    backup_session = backup_parent / "session"
+
+    os.replace(final_session, backup_session)
+
+    try:
+        os.replace(staged_session, final_session)
+    except Exception:
+        try:
+            os.replace(backup_session, final_session)
+        except Exception:
+            log.exception(
+                "Failed to restore the previous InitSurf session from %s",
+                backup_session,
+            )
+            raise
+        raise
+    else:
+        shutil.rmtree(backup_parent, ignore_errors=True)
+
+
+def _generate_subject(
+    subject_id: str,
+    ds_key: str,
+    preproc_root: str,
+    seg_root: str,
+    out_root: str,
+    ses: str,
+    space: str,
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generate one subject transactionally and publish only complete outputs."""
+    overwrite = bool(params.get("overwrite", False))
+
+    if (not overwrite) and outputs_complete(
+        out_root,
+        subject_id,
+        ses,
+        space,
+    ):
+        msg = (
+            "All expected InitSurf outputs already exist; "
+            "skipping because overwrite=false."
+        )
+        log.info(f"[{ds_key}][{subject_id}] {msg}")
+        return {
+            "status": "skipped_existing",
+            "reason": msg,
+            "subject_id": subject_id,
+            "ds_key": ds_key,
+        }
+
+    Path(out_root).mkdir(parents=True, exist_ok=True)
+    staged_root = tempfile.mkdtemp(
+        prefix=f".initsurf-stage-{subject_id}-ses-{ses}-",
+        dir=out_root,
+    )
+
+    try:
+        result = _generate_subject_impl(
+            subject_id=subject_id,
+            ds_key=ds_key,
+            preproc_root=preproc_root,
+            seg_root=seg_root,
+            out_root=staged_root,
+            ses=ses,
+            space=space,
+            params=params,
+        )
+
+        if result.get("status") != "ok":
+            raise RuntimeError(
+                f"Unexpected staged InitSurf status: {result.get('status')!r}"
+            )
+
+        if not outputs_complete(
+            staged_root,
+            subject_id,
+            ses,
+            space,
+        ):
+            raise RuntimeError(
+                "Staged InitSurf outputs are incomplete despite an OK result"
+            )
+
+        _promote_staged_subject(
+            staged_root=staged_root,
+            out_root=out_root,
+            subject_id=subject_id,
+            ses=ses,
+        )
+
+        if not outputs_complete(
+            out_root,
+            subject_id,
+            ses,
+            space,
+        ):
+            raise RuntimeError(
+                "Published InitSurf outputs failed the completion check"
+            )
+
+        return result
+    finally:
+        shutil.rmtree(staged_root, ignore_errors=True)
 
 
 def _generate_subject_from_job(job: Dict[str, Any]) -> Dict[str, Any]:
