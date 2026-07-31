@@ -15,7 +15,6 @@ import pandas as pd
 import torch
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
-from torch.cuda.amp import autocast
 from torch.utils.data import ConcatDataset, DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
@@ -82,7 +81,7 @@ def _extract_state_dict(checkpoint: Any) -> dict[str, torch.Tensor]:
     Support all checkpoint formats used in SimCortex:
       1. raw model state_dict
       2. {"state_dict": ...}
-      3. corrected full checkpoint {"model": ..., "optimizer": ..., ...}
+      3. full checkpoint {"model": ..., "optimizer": ..., ...}
       4. common fallback {"model_state_dict": ...}
     """
     if not isinstance(checkpoint, dict):
@@ -93,7 +92,8 @@ def _extract_state_dict(checkpoint: Any) -> dict[str, torch.Tensor]:
             state = checkpoint[key]
             return _strip_module_prefix(state)
 
-    # Raw state_dict: all values should be tensors or tensor-like state entries.
+    # Fallback: treat a non-empty string-keyed mapping as a raw state_dict;
+    # strict model loading below validates its entries.
     if checkpoint and all(isinstance(k, str) for k in checkpoint.keys()):
         return _strip_module_prefix(checkpoint)  # type: ignore[arg-type]
 
@@ -114,8 +114,8 @@ def build_model(cfg: DictConfig, checkpoint_cfg: Optional[DictConfig] = None) ->
     Build a U-Net using current inference config, with optional fallback to model
     settings stored in a full training checkpoint.
 
-    Inference must use the exact same architecture as training. This matters after
-    switching from the old single-conv U-Net to the corrected normalized double-conv U-Net.
+    Inference must use the exact same architecture as training. The configuration
+    must match the normalized double-convolution U-Net used during training.
     """
     num_classes = int(OmegaConf.select(cfg, "model.out_channels", default=9))
     kwargs: dict[str, Any] = {
@@ -497,7 +497,9 @@ def main(cfg: DictConfig) -> None:
 
             vol = vol.to(device, non_blocking=True)
 
-            with autocast(enabled=amp_enabled):
+            with torch.amp.autocast(
+                enabled=amp_enabled,
+            ):
                 logits = model(vol)
                 pred = logits.argmax(dim=1).detach().cpu().numpy()
 
