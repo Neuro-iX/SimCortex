@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import hydra
 import numpy as np
@@ -38,6 +38,9 @@ def setup_logger(log_dir: str | Path, filename: str = "seg_eval.log") -> None:
     )
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
+    console.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] - %(message)s")
+    )
     logging.getLogger("").addHandler(console)
 
 
@@ -65,7 +68,11 @@ def _get_map(cfg_node: Any, keys: Tuple[str, ...]) -> Optional[Dict[str, str]]:
     return None
 
 
-def _validate_single_split_csv(split_csv: str, dataset_name: Optional[str] = None) -> Optional[Path]:
+def _validate_single_split_csv(
+    split_csv: str,
+    dataset_name: Optional[str] = None,
+    cache_dir: Optional[Path] = None,
+) -> Optional[Path]:
     """
     Validate a single-dataset split CSV.
 
@@ -100,7 +107,10 @@ def _validate_single_split_csv(split_csv: str, dataset_name: Optional[str] = Non
     if df_ds.empty:
         raise ValueError(f"No rows for dataset.name='{dataset_name}' in split file: {split_csv}")
 
-    filtered = split_csv_p.parent / f".single_eval_split_{dataset_name}.csv"
+    target_dir = cache_dir if cache_dir is not None else split_csv_p.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    filtered = target_dir / f"split_{dataset_name}.csv"
     df_ds.to_csv(filtered, index=False)
     logging.info("Filtered single-dataset split CSV written: %s", filtered)
     return filtered
@@ -199,7 +209,7 @@ def nsd_monai(
     gt: np.ndarray,
     pred: np.ndarray,
     num_classes: int,
-    tolerance_vox: float = 1.0,
+    tolerance_mm: float = 1.0,
     include_background: bool = False,
     spacing: Sequence[float] = (1.0, 1.0, 1.0),
 ) -> Tuple[float, Dict[str, float]]:
@@ -225,7 +235,7 @@ def nsd_monai(
     pred_1h = F.one_hot(pred_t, num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
 
     n_thresholds = num_classes if include_background else num_classes - 1
-    class_thresholds = [float(tolerance_vox)] * n_thresholds
+    class_thresholds = [float(tolerance_mm)] * n_thresholds
 
     nsd = compute_surface_dice(
         y_pred=pred_1h,
@@ -289,7 +299,13 @@ def build_eval_datasets(cfg) -> List[Tuple[str, EvalSegDataset]]:
                 "Using SINGLE-DATASET mode and ignoring outputs.pred_roots."
             )
 
-        filtered_csv = _validate_single_split_csv(split_csv, dataset_name=single_dataset_name)
+        cache_dir = Path(_as_abs_path(cfg.outputs.log_dir)) / "split_cache"
+
+        filtered_csv = _validate_single_split_csv(
+            split_csv,
+            dataset_name=single_dataset_name,
+            cache_dir=cache_dir,
+        )
         split_for_dataset = str(filtered_csv) if filtered_csv is not None else split_csv
 
         ds = EvalSegDataset(
@@ -367,7 +383,13 @@ def main(cfg) -> None:
     eps = float(getattr(cfg.evaluation, "eps", 1e-6))
 
     compute_nsd = bool(getattr(cfg.evaluation, "compute_nsd", True))
-    nsd_tol = float(getattr(cfg.evaluation, "nsd_tolerance_vox", 1.0))
+    nsd_tol_mm = float(
+        getattr(
+            cfg.evaluation,
+            "nsd_tolerance_mm",
+            getattr(cfg.evaluation, "nsd_tolerance_vox", 1.0),
+        )
+    )
     nsd_include_bg = bool(getattr(cfg.evaluation, "nsd_include_background", False))
     spacing = tuple(float(x) for x in getattr(cfg.evaluation, "spacing", (1.0, 1.0, 1.0)))
     if len(spacing) != 3:
@@ -383,6 +405,13 @@ def main(cfg) -> None:
         logging.info("[%s] Evaluating %d subjects on split=%s", ds_name, len(ds), cfg.dataset.split_name)
 
         for i in range(len(ds)):
+            subject_hint = (
+                str(ds.subjects[i])
+                if hasattr(ds, "subjects") and i < len(ds.subjects)
+                else ""
+            )
+            session_hint = str(getattr(ds, "ses", ""))
+
             try:
                 gt9, pred_arr, sub, ses = ds[i]
 
@@ -420,7 +449,7 @@ def main(cfg) -> None:
                         gt9,
                         pred_arr,
                         num_classes=num_classes,
-                        tolerance_vox=nsd_tol,
+                        tolerance_mm=nsd_tol_mm,
                         include_background=nsd_include_bg,
                         spacing=spacing,
                     )
@@ -443,10 +472,18 @@ def main(cfg) -> None:
                     {
                         "dataset": ds_name,
                         "index": i,
+                        "subject": subject_hint,
+                        "session": session_hint,
                         "error": repr(e),
                     }
                 )
-                logging.warning("[%s] Failed: index=%d err=%r", ds_name, i, e)
+                logging.warning(
+                    "[%s] Failed: index=%d subject=%s err=%r",
+                    ds_name,
+                    i,
+                    subject_hint,
+                    e,
+                )
 
     eval_csv = Path(_as_abs_path(cfg.outputs.eval_csv))
     eval_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -466,11 +503,13 @@ def main(cfg) -> None:
         logging.info("Saved failure report: %s", failed_csv)
     else:
         # Write an empty failure report with stable columns.
-        pd.DataFrame(columns=["dataset", "index", "error"]).to_csv(failed_csv, index=False)
+        pd.DataFrame(
+            columns=["dataset", "index", "subject", "session", "error"]
+        ).to_csv(failed_csv, index=False)
 
     if not records:
-        logging.warning("No subjects evaluated successfully.")
-        return
+        logging.error("No subjects evaluated successfully.")
+        raise SystemExit(1)
 
     df = pd.DataFrame(records)
     df.to_csv(eval_csv, index=False)
@@ -531,6 +570,9 @@ def main(cfg) -> None:
         logging.info("Saved Excel report to %s", out_xlsx_p)
 
     logging.info("Done. Evaluated=%d Failed=%d", n_total, len(failures))
+
+    if failures:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
