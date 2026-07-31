@@ -115,19 +115,38 @@ class DualMUNetV2(nn.Module):
         C_in: int = 2,                    # [MRI] + geom channels
         C_hid=(8, 16, 32, 64, 128, 128),
         geom_ratio: float = 0.5,          # geom width ratio
-        geom_depth: int = 4,              # <=6 (learned depth for geom)
+        geom_depth: int = 6,              # 1..6 learned geometry stages
         K: int = 3,
         gn_groups: int = 8,
         gate_init: float = -3.0,
         dropout: float = 0.0,
     ):
         super().__init__()
-        if int(C_in) < 2:
+        C_in = int(C_in)
+        if C_in < 2:
             raise ValueError(f"C_in must be >= 2 for [MRI + geom/prob], got {C_in}")
+
         geom_depth = int(geom_depth)
         if not (1 <= geom_depth <= 6):
             raise ValueError(f"geom_depth must be in [1, 6], got {geom_depth}")
+
+        geom_ratio = float(geom_ratio)
+        if not math.isfinite(geom_ratio) or geom_ratio <= 0.0:
+            raise ValueError(f"geom_ratio must be finite and > 0, got {geom_ratio}")
+
+        gn_groups = int(gn_groups)
+        if gn_groups <= 0:
+            raise ValueError(f"gn_groups must be > 0, got {gn_groups}")
+
+        gate_init = float(gate_init)
+        if not math.isfinite(gate_init):
+            raise ValueError(f"gate_init must be finite, got {gate_init}")
+
         dropout = float(dropout)
+        if not (0.0 <= dropout < 1.0):
+            raise ValueError(f"dropout must satisfy 0 <= dropout < 1, got {dropout}")
+
+        self.C_in = C_in
 
         # MRI channels
         Cm = list(C_hid)
@@ -208,6 +227,13 @@ class DualMUNetV2(nn.Module):
         return g
 
     def forward(self, x):
+        if x.ndim != 5:
+            raise ValueError(f"DualMUNetV2 expects a 5D tensor (B,C,D,H,W), got {tuple(x.shape)}")
+        if int(x.shape[1]) != self.C_in:
+            raise ValueError(
+                f"DualMUNetV2 expected {self.C_in} input channels, got {int(x.shape[1])}"
+            )
+
         mri = x[:, 0:1]     # (B,1,D,H,W)
         geom = x[:, 1:]     # (B,C_in-1,D,H,W)
 
@@ -293,20 +319,22 @@ class SurfDeform(nn.Module):
         sigma=1.0,
         # dual encoder controls
         geom_ratio=0.5,
-        geom_depth=4,
+        geom_depth=6,
         gn_groups=8,
         gate_init =-3.0,
         dropout=0.0,
     ):
         super().__init__()
-        self.inshape = tuple(inshape)
+        self.inshape = tuple(int(value) for value in inshape)
+        self.C_in = int(C_in)
 
         if len(self.inshape) != 3:
             raise ValueError(f"inshape must be a 3-tuple/list (D,H,W), got {self.inshape}")
 
-        if any(int(x) % 8 != 0 for x in self.inshape):
+        if any(value <= 0 or value % 8 != 0 for value in self.inshape):
             raise ValueError(
-                f"SurfDeform inshape must be divisible by 8 in each dimension, got {self.inshape}"
+                "SurfDeform inshape must contain positive dimensions divisible by 8, "
+                f"got {self.inshape}"
             )
 
         self.munet = DualMUNetV2(
@@ -333,8 +361,21 @@ class SurfDeform(nn.Module):
         vol: torch.Tensor,
         n_steps: int,
     ):
+        if vert.ndim != 3 or int(vert.shape[-1]) != 3:
+            raise ValueError(f"vert must have shape (B,V,3), got {tuple(vert.shape)}")
+        if vol.ndim != 5:
+            raise ValueError(f"vol must have shape (B,C,D,H,W), got {tuple(vol.shape)}")
+        if int(vert.shape[0]) != int(vol.shape[0]):
+            raise ValueError(
+                f"vert/vol batch mismatch: {int(vert.shape[0])} vs {int(vol.shape[0])}"
+            )
+        if int(vol.shape[1]) != self.C_in:
+            raise ValueError(f"Input vol has {int(vol.shape[1])} channels, expected {self.C_in}")
         if tuple(vol.shape[2:]) != self.inshape:
             raise ValueError(f"Input vol shape {tuple(vol.shape[2:])} != inshape {self.inshape}")
+        n_steps = int(n_steps)
+        if n_steps < 0:
+            raise ValueError(f"n_steps must be >= 0, got {n_steps}")
 
         svfs = self.munet(vol)
 
@@ -377,6 +418,12 @@ class SurfDeform(nn.Module):
 
 
     def integrate(self, svf: torch.Tensor, n_steps: int = 7) -> torch.Tensor:
+        n_steps = int(n_steps)
+        if n_steps < 0:
+            raise ValueError(f"n_steps must be >= 0, got {n_steps}")
+        if svf.ndim != 5 or int(svf.shape[1]) != 3:
+            raise ValueError(f"svf must have shape (B,3,D,H,W), got {tuple(svf.shape)}")
+
         flow = svf / float(2 ** n_steps)
         for _ in range(n_steps):
             flow = flow + self.transform(flow, flow)
