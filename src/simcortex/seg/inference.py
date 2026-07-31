@@ -497,9 +497,7 @@ def main(cfg: DictConfig) -> None:
 
             vol = vol.to(device, non_blocking=True)
 
-            with torch.amp.autocast(
-                enabled=amp_enabled,
-            ):
+            with torch.cuda.amp.autocast(enabled=amp_enabled):
                 logits = model(vol)
                 pred = logits.argmax(dim=1).detach().cpu().numpy()
 
