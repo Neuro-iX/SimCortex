@@ -70,7 +70,7 @@ class DoubleConv(nn.Module):
 
 class Unet(nn.Module):
     """
-    Lightweight 3D U-Net for SimCortex segmentation.
+    3D U-Net for SimCortex segmentation.
 
     Expected shapes
     ---------------

@@ -17,7 +17,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
-from torch.cuda.amp import GradScaler, autocast
+from torch.cuda.amp import GradScaler
 from torch.utils.data import ConcatDataset, DataLoader, Dataset, Sampler
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
@@ -31,7 +31,7 @@ from simcortex.seg.models.unet import Unet
 # General helpers
 # -----------------------------------------------------------------------------
 def _state_dict(model: nn.Module) -> dict[str, torch.Tensor]:
-    """Return an unwrappped state_dict from plain, DataParallel, or DDP models."""
+    """Return an unwrapped state_dict from plain, DataParallel, or DDP models."""
     return model.module.state_dict() if hasattr(model, "module") else model.state_dict()
 
 
@@ -41,11 +41,6 @@ def _to_abs_str(path_like: Any) -> str:
     if p.is_absolute():
         return str(p)
     return to_absolute_path(str(p))
-
-
-def _get_bool(node: Any, key: str, default: bool = False) -> bool:
-    val = getattr(node, key, default)
-    return bool(val)
 
 
 def _main_process(rank: int) -> bool:
@@ -722,7 +717,7 @@ def run_one_epoch(
             optimizer.zero_grad(set_to_none=True)
 
         with torch.set_grad_enabled(train):
-            with torch.amp.autocast('cuda', enabled=amp_enabled):
+            with torch.cuda.amp.autocast(enabled=amp_enabled):
                 logits = model(x)
                 loss = loss_ce(logits, y) + dice_weight * loss_dice(logits, y)
 
@@ -886,7 +881,7 @@ def main(cfg: DictConfig) -> None:
         scheduler, scheduler_kind = build_scheduler(cfg, optimizer)
 
         amp_enabled = bool(OmegaConf.select(cfg, "trainer.amp", default=(device.type == "cuda"))) and device.type == "cuda"
-        scaler = torch.amp.GradScaler('cuda', enabled=amp_enabled) if amp_enabled else None
+        scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled) if amp_enabled else None
         grad_clip_norm = float(OmegaConf.select(cfg, "trainer.grad_clip_norm", default=0.0) or 0.0)
 
         writer = SummaryWriter(str(log_dir)) if _main_process(rank) else None
@@ -917,6 +912,7 @@ def main(cfg: DictConfig) -> None:
         val_every = int(OmegaConf.select(cfg, "trainer.validation_interval", default=1) or 1)
         keep_last_n = int(OmegaConf.select(cfg, "trainer.keep_last_n_checkpoints", default=0) or 0)
         early_stop_patience = int(OmegaConf.select(cfg, "trainer.early_stop_patience", default=0) or 0)
+        early_stop_min_delta = float(OmegaConf.select(cfg, "trainer.early_stop_min_delta", default=0.0) or 0.0)
         epochs_without_improvement = 0
 
         if _main_process(rank):
@@ -1009,7 +1005,7 @@ def main(cfg: DictConfig) -> None:
                             if not np.isnan(value):
                                 writer.add_scalar(f"val/dice_class_{cls_idx}", float(value), epoch)
 
-                    if vdice_m > best_dice:
+                    if vdice_m > best_dice + early_stop_min_delta:
                         best_dice = vdice_m
                         best_epoch = epoch
                         epochs_without_improvement = 0
