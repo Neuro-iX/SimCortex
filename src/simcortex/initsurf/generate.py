@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import os
+import importlib.metadata as importlib_metadata
 import json
-import time
 import logging
-import traceback
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import os
+import shutil
+import tempfile
+import time
+import traceback
 from typing import Callable, Dict, List, Optional, Tuple, Any
 from pathlib import Path
 
@@ -40,7 +42,7 @@ from simcortex.initsurf.paths import (
 from simcortex.utils.tca import topology
 
 
-log = logging.getLogger("scpp.initsurf")
+log = logging.getLogger("simcortex.initsurf")
 _TOPO_CORRECT = None
 
 
@@ -61,16 +63,25 @@ def setup_logger(log_dir: str, filename: str = "generate_initsurf.log") -> None:
     logging.getLogger("").addHandler(console)
 
 
-def setup_subject_logger(log_dir: str, ds_key: str, subject_id: str) -> None:
+def _close_root_handlers() -> None:
+    root = logging.getLogger("")
+    for handler in root.handlers[:]:
+        try:
+            handler.flush()
+        finally:
+            handler.close()
+            root.removeHandler(handler)
 
+
+def setup_subject_logger(log_dir: str, ds_key: str, subject_id: str) -> None:
     subj_log_dir = os.path.join(log_dir, "subjects")
     os.makedirs(subj_log_dir, exist_ok=True)
     safe_ds = str(ds_key).replace("/", "_")
     safe_sub = str(subject_id).replace("/", "_")
     log_file = os.path.join(subj_log_dir, f"{safe_ds}_{safe_sub}.log")
 
+    _close_root_handlers()
     root = logging.getLogger("")
-    root.handlers.clear()
     root.setLevel(logging.INFO)
 
     fh = logging.FileHandler(log_file, mode="w")
@@ -79,6 +90,23 @@ def setup_subject_logger(log_dir: str, ds_key: str, subject_id: str) -> None:
         logging.Formatter("%(asctime)s [%(levelname)s] %(processName)s - %(message)s")
     )
     root.addHandler(fh)
+
+
+def _write_json_atomic(path: str | Path, payload: Dict[str, Any]) -> None:
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = out_path.with_name(
+        f".{out_path.name}.tmp-{os.getpid()}"
+    )
+    try:
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
+            handle.write("\n")
+        os.replace(tmp_path, out_path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
 
 def save_nifti(
     data: np.ndarray,
@@ -99,30 +127,31 @@ def save_nifti(
     nib.save(img, str(out_p))
 
 
+def _simcortex_version() -> str:
+    try:
+        return importlib_metadata.version("simcortex")
+    except importlib_metadata.PackageNotFoundError:
+        return "2.0.0"
+
+
 def write_dataset_description(
     root: str,
-    name: str = "scpp-initsurf",
-    version: str = "0.3",
+    name: str = "sc-initsurf",
 ) -> None:
     path = os.path.join(root, "dataset_description.json")
-    if os.path.exists(path):
-        return
-
     dd = {
         "Name": name,
         "BIDSVersion": "1.9.0",
         "DatasetType": "derivative",
-        "GeneratedBy": [{"Name": "SimCortex", "Version": version}],
+        "GeneratedBy": [
+            {
+                "Name": "SimCortex",
+                "Version": _simcortex_version(),
+                "Description": "Collision-free initial cortical surfaces in MNI152 space.",
+            }
+        ],
     }
-    os.makedirs(root, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(dd, f, indent=2)
-
-
-def _abs_path_or_none(x: Any) -> Optional[str]:
-    if x in (None, ""):
-        return None
-    return to_absolute_path(str(x))
+    _write_json_atomic(path, dd)
 
 
 def _is_affine_close(a: np.ndarray, b: np.ndarray, atol: float = 1e-4) -> bool:
@@ -156,6 +185,7 @@ def expected_output_paths(out_root: str, subject_id: str, ses: str, space: str) 
         os.path.join(surf_dir, f"{stem}_hemi-R_white.surf.ply"),
         os.path.join(surf_dir, f"{stem}_hemi-L_pial.surf.ply"),
         os.path.join(surf_dir, f"{stem}_hemi-R_pial.surf.ply"),
+        os.path.join(anat_dir, f"{stem}_desc-initsurf_qc.json"),
     ]
 
 
@@ -172,7 +202,7 @@ def _get_map(cfg_node, keys: Tuple[str, ...]) -> Optional[Dict[str, str]]:
 
 
 def _normalize_session_label(s: str) -> str:
-    s = str(s)
+    s = str(s).strip()
     return s[4:] if s.startswith("ses-") else s
 
 
@@ -180,7 +210,7 @@ def normalize_subject_column(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     if "subject" not in df.columns:
         raise ValueError(f"split_file must contain column 'subject'. Got: {list(df.columns)}")
-    df["subject"] = df["subject"].astype(str)
+    df["subject"] = df["subject"].astype(str).str.strip()
     df["subject"] = df["subject"].apply(lambda x: x if x.startswith("sub-") else f"sub-{x}")
     return df
 
@@ -206,6 +236,95 @@ def _validate_multi_split_df(df: pd.DataFrame) -> None:
     req = {"subject", "split", "dataset"}
     if not req.issubset(set(df.columns)):
         raise ValueError(f"split_file must contain columns {sorted(req)}. Got: {list(df.columns)}")
+
+
+def _validate_unique_rows(df: pd.DataFrame, columns: List[str]) -> None:
+    duplicates = df.duplicated(subset=columns, keep=False)
+    if duplicates.any():
+        rows = df.loc[duplicates, columns + ["split"]].head(20)
+        raise ValueError(
+            "Duplicate split rows found:\n" + rows.to_string(index=False)
+        )
+
+
+def _validate_params(params: Dict[str, Any]) -> None:
+    required = {
+        "gap_size",
+        "sdf_sigma",
+        "topo_threshold",
+        "n_smooth",
+        "wm_start_level",
+        "wm_step",
+        "wm_min_level",
+        "pial_min_level",
+        "pial_max_level",
+        "pial_grid_step",
+    }
+    missing = sorted(required - set(params))
+    if missing:
+        raise KeyError(f"Missing InitSurf parameters: {missing}")
+
+    if int(params["gap_size"]) < 0:
+        raise ValueError("params.gap_size must be >= 0")
+    if float(params["sdf_sigma"]) < 0:
+        raise ValueError("params.sdf_sigma must be >= 0")
+    if int(params["n_smooth"]) < 0:
+        raise ValueError("params.n_smooth must be >= 0")
+    if float(params.get("affine_atol", 1e-4)) < 0:
+        raise ValueError("params.affine_atol must be >= 0")
+
+    wm_start = float(params["wm_start_level"])
+    wm_step = float(params["wm_step"])
+    wm_min = float(params["wm_min_level"])
+    wm_inset = float(params.get("wm_inset", 1.0))
+    if wm_step >= 0:
+        raise ValueError("params.wm_step must be negative")
+    if wm_start < wm_min:
+        raise ValueError("params.wm_start_level must be >= params.wm_min_level")
+    if wm_inset < 0:
+        raise ValueError("params.wm_inset must be >= 0")
+
+    pial_min = float(params["pial_min_level"])
+    pial_max = float(params["pial_max_level"])
+    pial_step = float(params["pial_grid_step"])
+    pial_floor = float(params.get("pial_absolute_floor", 0.1))
+    if pial_step <= 0:
+        raise ValueError("params.pial_grid_step must be positive")
+    if pial_min > pial_max:
+        raise ValueError("params.pial_min_level must be <= params.pial_max_level")
+    if pial_floor < 0 or pial_floor > pial_min:
+        raise ValueError(
+            "params.pial_absolute_floor must be in [0, params.pial_min_level]"
+        )
+
+    numeric_values = [
+        float(params["sdf_sigma"]),
+        float(params["topo_threshold"]),
+        float(params.get("affine_atol", 1e-4)),
+        wm_start,
+        wm_step,
+        wm_min,
+        wm_inset,
+        pial_min,
+        pial_max,
+        pial_step,
+        pial_floor,
+    ]
+    if not np.isfinite(numeric_values).all():
+        raise ValueError("InitSurf numeric parameters must be finite")
+
+
+def _validate_runtime_dependencies() -> None:
+    try:
+        CollisionManager()
+    except Exception as exc:
+        raise RuntimeError(
+            "InitSurf collision checking requires python-fcl. "
+            "Install the package with the InitSurf extra."
+        ) from exc
+
+    # Validate the packaged topology lookup table before launching workers.
+    get_topo_correct()
 
 
 def _detect_generate_mode(cfg):
@@ -516,35 +635,20 @@ def free_collision_wm_from_topo(
         )
 
     first_collision_free_level = None
-    last_l = None
-    last_r = None
-    last_level = levels[0]
 
     for level in levels:
         mesh_l = get_l(level)
         mesh_r = get_r(level)
-
-        last_l = mesh_l
-        last_r = mesh_r
-        last_level = level
 
         if not meshes_collide(mesh_l, mesh_r):
             first_collision_free_level = level
             break
 
     if first_collision_free_level is None:
-        log.warning(
-            f"[WM] FAILED to find collision-free level in "
-            f"{start_level:.3f}..{min_level:.3f}. "
-            f"Returning last tried level={last_level:.3f}"
+        raise RuntimeError(
+            f"[WM] No collision-free level found in "
+            f"{start_level:.3f}..{min_level:.3f} with step={step:.3f}."
         )
-
-        if last_l is None or last_r is None:
-            last_l = get_l(float(start_level))
-            last_r = get_r(float(start_level))
-            last_level = float(start_level)
-
-        return last_l, last_r, last_level
 
     wm_final_level = float(first_collision_free_level - wm_inset)
 
@@ -746,7 +850,7 @@ def free_collision_pial_offset_grid(
         f"Consider lowering pial_absolute_floor or checking WM/pial field quality."
     )
 
-def _generate_subject(
+def _generate_subject_impl(
     subject_id: str,
     ds_key: str,
     preproc_root: str,
@@ -773,32 +877,17 @@ def _generate_subject(
     pial_grid_step = float(params["pial_grid_step"])
     pial_absolute_floor = float(params.get("pial_absolute_floor", 0.1))
 
-    overwrite = bool(params.get("overwrite", False))
     validate_affine = bool(params.get("validate_affine", True))
     affine_atol = float(params.get("affine_atol", 1e-4))
-
-    if (not overwrite) and outputs_complete(out_root, subject_id, ses, space):
-        msg = "All expected InitSurf outputs already exist; skipping because overwrite=false."
-        log.info(f"[{ds_key}][{subject_id}] {msg}")
-        return {
-            "status": "skipped",
-            "reason": msg,
-            "subject_id": subject_id,
-            "ds_key": ds_key,
-        }
 
     brain_path = t1_mni_path(preproc_root, subject_id, ses=ses, space=space)
     pred_path = seg9_dseg_path(seg_root, subject_id, ses=ses, space=space)
 
     if not os.path.exists(brain_path):
-        msg = f"Missing preproc T1 -> skip: {brain_path}"
-        log.warning(f"[{ds_key}][{subject_id}] {msg}")
-        return {"status": "skipped", "reason": msg, "subject_id": subject_id, "ds_key": ds_key}
+        raise FileNotFoundError(f"Missing preprocessed T1: {brain_path}")
 
     if not os.path.exists(pred_path):
-        msg = f"Missing seg9 dseg -> skip: {pred_path}"
-        log.warning(f"[{ds_key}][{subject_id}] {msg}")
-        return {"status": "skipped", "reason": msg, "subject_id": subject_id, "ds_key": ds_key}
+        raise FileNotFoundError(f"Missing seg9 prediction: {pred_path}")
 
     brain = nib.load(brain_path)
     seg_img = nib.load(pred_path)
@@ -840,12 +929,8 @@ def _generate_subject(
 
     lh_mask, rh_mask = build_wm_masks_from_labels(seg_clean)
 
-    try:
-        lh_wm_sdf_raw = compute_sdf(lh_mask, sigma=sdf_sigma, keep_largest=True)
-        rh_wm_sdf_raw = compute_sdf(rh_mask, sigma=sdf_sigma, keep_largest=True)
-    except ValueError as e:
-        log.error(f"[{ds_key}][{subject_id}] WM SDF Error: {e}")
-        return {"status": "failed", "reason": f"WM SDF Error: {e}", "subject_id": subject_id, "ds_key": ds_key}
+    lh_wm_sdf_raw = compute_sdf(lh_mask, sigma=sdf_sigma, keep_largest=True)
+    rh_wm_sdf_raw = compute_sdf(rh_mask, sigma=sdf_sigma, keep_largest=True)
 
     lh_wm_topo = prepare_topo_sdf(lh_wm_sdf_raw, topo_threshold=topo_thr)
     rh_wm_topo = prepare_topo_sdf(rh_wm_sdf_raw, topo_threshold=topo_thr)
@@ -890,6 +975,14 @@ def _generate_subject(
     pial_lr_col = meshes_collide(mesh_l_pial, mesh_r_pial)
 
     all_collision_free = not (wm_lr_col or pial_l_wm_col or pial_r_wm_col or pial_lr_col)
+    if not all_collision_free:
+        raise RuntimeError(
+            f"Final InitSurf collision check failed: "
+            f"WM_L-WM_R={wm_lr_col}, "
+            f"Pial_L-WM_L={pial_l_wm_col}, "
+            f"Pial_R-WM_R={pial_r_wm_col}, "
+            f"Pial_L-Pial_R={pial_lr_col}"
+        )
 
     mesh_l_wm.export(os.path.join(surf_dir, f"{subject_id}_ses-{ses}_space-{space}_hemi-L_white.surf.ply"))
     mesh_r_wm.export(os.path.join(surf_dir, f"{subject_id}_ses-{ses}_space-{space}_hemi-R_white.surf.ply"))
@@ -922,17 +1015,10 @@ def _generate_subject(
     ribbon_mask = (lh_ribbon | rh_ribbon).astype(np.uint8)
 
     if ribbon_mask.sum() == 0:
-        log.warning(f"[{ds_key}][{subject_id}] Empty ribbon mask -> writing fallback ribbon outputs")
-        ribbon_sdf = np.ones_like(ribbon_mask, dtype=np.float32)
-        ribbon_prob = np.zeros_like(ribbon_mask, dtype=np.float32)
-    else:
-        try:
-            ribbon_sdf = compute_sdf(ribbon_mask, sigma=sdf_sigma, keep_largest=False)
-            ribbon_prob = sdf_to_probability(ribbon_sdf, beta=1.0)
-        except ValueError:
-            log.warning(f"[{ds_key}][{subject_id}] Ribbon SDF failed -> writing fallback ribbon outputs")
-            ribbon_sdf = np.ones_like(ribbon_mask, dtype=np.float32)
-            ribbon_prob = np.zeros_like(ribbon_mask, dtype=np.float32)
+        raise RuntimeError(f"[{ds_key}][{subject_id}] Empty cortical ribbon mask")
+
+    ribbon_sdf = compute_sdf(ribbon_mask, sigma=sdf_sigma, keep_largest=False)
+    ribbon_prob = sdf_to_probability(ribbon_sdf, beta=1.0)
 
     save_nifti(
         ribbon_sdf,
@@ -947,31 +1033,49 @@ def _generate_subject(
 
     elapsed = time.time() - t0
 
-    if all_collision_free:
-        log.info(
-            f"[{ds_key}][{subject_id}] OK | "
-            f"wm_final_level={wm_final_level:.3f} "
-            f"pialL_offset={pial_offset_l:.3f} "
-            f"pialR_offset={pial_offset_r:.3f} "
-            f"elapsed={elapsed:.1f}s"
-        )
-        status = "ok"
-    else:
-        log.warning(
-            f"[{ds_key}][{subject_id}] PARTIAL | "
-            f"wm_final_level={wm_final_level:.3f} "
-            f"pialL_offset={pial_offset_l:.3f} "
-            f"pialR_offset={pial_offset_r:.3f} "
-            f"WM_L-WM_R={wm_lr_col} "
-            f"Pial_L-WM_L={pial_l_wm_col} "
-            f"Pial_R-WM_R={pial_r_wm_col} "
-            f"Pial_L-Pial_R={pial_lr_col} "
-            f"elapsed={elapsed:.1f}s"
-        )
-        status = "partial"
+    qc_path = os.path.join(
+        anat_dir,
+        f"{subject_id}_ses-{ses}_space-{space}_desc-initsurf_qc.json",
+    )
+    _write_json_atomic(
+        qc_path,
+        {
+            "Status": "ok",
+            "Dataset": ds_key,
+            "Subject": subject_id,
+            "Session": f"ses-{ses}",
+            "Space": space,
+            "SimCortexVersion": _simcortex_version(),
+            "Inputs": {
+                "PreprocessedT1": brain_path,
+                "Segmentation": pred_path,
+            },
+            "Parameters": params,
+            "Levels": {
+                "White": float(wm_final_level),
+                "PialLeft": float(pial_offset_l),
+                "PialRight": float(pial_offset_r),
+            },
+            "CollisionChecks": {
+                "WhiteLeftRight": bool(wm_lr_col),
+                "PialLeftWhiteLeft": bool(pial_l_wm_col),
+                "PialRightWhiteRight": bool(pial_r_wm_col),
+                "PialLeftRight": bool(pial_lr_col),
+            },
+            "ElapsedSeconds": float(elapsed),
+        },
+    )
+
+    log.info(
+        f"[{ds_key}][{subject_id}] OK | "
+        f"wm_final_level={wm_final_level:.3f} "
+        f"pialL_offset={pial_offset_l:.3f} "
+        f"pialR_offset={pial_offset_r:.3f} "
+        f"elapsed={elapsed:.1f}s"
+    )
 
     return {
-        "status": status,
+        "status": "ok",
         "subject_id": subject_id,
         "ds_key": ds_key,
         "elapsed": elapsed,
@@ -983,6 +1087,147 @@ def _generate_subject(
         "pial_r_wm_col": bool(pial_r_wm_col),
         "pial_lr_col": bool(pial_lr_col),
     }
+
+
+def _subject_session_dir(
+    root: str,
+    subject_id: str,
+    ses: str,
+) -> Path:
+    return Path(root) / subject_id / f"ses-{ses}"
+
+
+def _promote_staged_subject(
+    staged_root: str,
+    out_root: str,
+    subject_id: str,
+    ses: str,
+) -> None:
+    """Replace one subject/session only after staged outputs are complete."""
+    staged_session = _subject_session_dir(staged_root, subject_id, ses)
+    final_session = _subject_session_dir(out_root, subject_id, ses)
+
+    if not staged_session.is_dir():
+        raise RuntimeError(
+            f"Staged InitSurf session directory is missing: {staged_session}"
+        )
+
+    final_session.parent.mkdir(parents=True, exist_ok=True)
+
+    if not final_session.exists():
+        os.replace(staged_session, final_session)
+        return
+
+    backup_parent = Path(
+        tempfile.mkdtemp(
+            prefix=f".initsurf-backup-{subject_id}-ses-{ses}-",
+            dir=str(Path(out_root)),
+        )
+    )
+    backup_session = backup_parent / "session"
+
+    os.replace(final_session, backup_session)
+
+    try:
+        os.replace(staged_session, final_session)
+    except Exception:
+        try:
+            os.replace(backup_session, final_session)
+        except Exception:
+            log.exception(
+                "Failed to restore the previous InitSurf session from %s",
+                backup_session,
+            )
+            raise
+        raise
+    else:
+        shutil.rmtree(backup_parent, ignore_errors=True)
+
+
+def _generate_subject(
+    subject_id: str,
+    ds_key: str,
+    preproc_root: str,
+    seg_root: str,
+    out_root: str,
+    ses: str,
+    space: str,
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generate one subject transactionally and publish only complete outputs."""
+    overwrite = bool(params.get("overwrite", False))
+
+    if (not overwrite) and outputs_complete(
+        out_root,
+        subject_id,
+        ses,
+        space,
+    ):
+        msg = (
+            "All expected InitSurf outputs already exist; "
+            "skipping because overwrite=false."
+        )
+        log.info(f"[{ds_key}][{subject_id}] {msg}")
+        return {
+            "status": "skipped_existing",
+            "reason": msg,
+            "subject_id": subject_id,
+            "ds_key": ds_key,
+        }
+
+    Path(out_root).mkdir(parents=True, exist_ok=True)
+    staged_root = tempfile.mkdtemp(
+        prefix=f".initsurf-stage-{subject_id}-ses-{ses}-",
+        dir=out_root,
+    )
+
+    try:
+        result = _generate_subject_impl(
+            subject_id=subject_id,
+            ds_key=ds_key,
+            preproc_root=preproc_root,
+            seg_root=seg_root,
+            out_root=staged_root,
+            ses=ses,
+            space=space,
+            params=params,
+        )
+
+        if result.get("status") != "ok":
+            raise RuntimeError(
+                f"Unexpected staged InitSurf status: {result.get('status')!r}"
+            )
+
+        if not outputs_complete(
+            staged_root,
+            subject_id,
+            ses,
+            space,
+        ):
+            raise RuntimeError(
+                "Staged InitSurf outputs are incomplete despite an OK result"
+            )
+
+        _promote_staged_subject(
+            staged_root=staged_root,
+            out_root=out_root,
+            subject_id=subject_id,
+            ses=ses,
+        )
+
+        if not outputs_complete(
+            out_root,
+            subject_id,
+            ses,
+            space,
+        ):
+            raise RuntimeError(
+                "Published InitSurf outputs failed the completion check"
+            )
+
+        return result
+    finally:
+        shutil.rmtree(staged_root, ignore_errors=True)
 
 
 def _generate_subject_from_job(job: Dict[str, Any]) -> Dict[str, Any]:
@@ -1025,16 +1270,8 @@ def _log_result_summary(result: Dict[str, Any]) -> None:
             f"pialL={result.get('pial_l', float('nan')):.3f} "
             f"pialR={result.get('pial_r', float('nan')):.3f}"
         )
-    elif status == "partial":
-        log.warning(
-            f"[{ds}][{sub}] PARTIAL | "
-            f"elapsed={result.get('elapsed', -1):.1f}s "
-            f"wm={result.get('wm_final_level', float('nan')):.3f} "
-            f"pialL={result.get('pial_l', float('nan')):.3f} "
-            f"pialR={result.get('pial_r', float('nan')):.3f}"
-        )
-    elif status == "skipped":
-        log.warning(f"[{ds}][{sub}] SKIPPED | {result.get('reason', '')}")
+    elif status == "skipped_existing":
+        log.info(f"[{ds}][{sub}] SKIPPED_EXISTING | {result.get('reason', '')}")
     else:
         log.error(
             f"[{ds}][{sub}] FAILED | {result.get('reason', '')}\n"
@@ -1042,50 +1279,70 @@ def _log_result_summary(result: Dict[str, Any]) -> None:
         )
 
 
-def _status_counts(results: List[Dict[str, Any]]) -> Tuple[int, int, int, int]:
+def _status_counts(results: List[Dict[str, Any]]) -> Tuple[int, int, int]:
     ok = sum(1 for r in results if r.get("status") == "ok")
-    partial = sum(1 for r in results if r.get("status") == "partial")
-    skipped = sum(1 for r in results if r.get("status") == "skipped")
-    failed = sum(1 for r in results if r.get("status") == "failed")
-    return ok, partial, skipped, failed
+    skipped_existing = sum(
+        1 for r in results if r.get("status") == "skipped_existing"
+    )
+    failed = sum(
+        1
+        for r in results
+        if r.get("status") not in {"ok", "skipped_existing"}
+    )
+    return ok, skipped_existing, failed
 
 
-def _run_jobs(jobs: List[Dict[str, Any]], n_workers: int) -> List[Dict[str, Any]]:
+def _run_jobs(
+    jobs: List[Dict[str, Any]],
+    n_workers: int,
+    max_tasks_per_worker: int,
+) -> List[Dict[str, Any]]:
+    """Run InitSurf jobs while recycling workers to release native memory."""
+    if n_workers < 1:
+        raise ValueError("n_workers must be >= 1")
+    if max_tasks_per_worker < 1:
+        raise ValueError("max_tasks_per_worker must be >= 1")
+
     results: List[Dict[str, Any]] = []
 
-    if n_workers <= 1:
-        log.info("InitSurf execution: serial")
-        with tqdm(total=len(jobs), desc="InitSurf", unit="subj") as pbar:
-            for job in jobs:
-                result = _generate_subject_from_job(job)
-                _log_result_summary(result)
-                results.append(result)
-
-                ok, partial, skipped, failed = _status_counts(results)
-                pbar.set_postfix_str(
-                    f"ok={ok} partial={partial} skipped={skipped} failed={failed}"
-                )
-                pbar.update(1)
+    if not jobs:
         return results
 
-    log.info(f"InitSurf execution: multiprocessing with n_workers={n_workers}")
+    # Keep a one-subject smoke test simple and easy to debug. Multi-subject runs,
+    # including n_workers=1 runs, use a recycling worker pool so native memory
+    # from python-fcl, trimesh, PyTorch, SciPy, and NumPy is returned to the OS.
+    if len(jobs) == 1:
+        log.info("InitSurf execution: serial one-subject run")
+        result = _generate_subject_from_job(jobs[0])
+        _log_result_summary(result)
+        return [result]
+
+    log.info(
+        "InitSurf execution: multiprocessing with n_workers=%d, "
+        "max_tasks_per_worker=%d",
+        n_workers,
+        max_tasks_per_worker,
+    )
     ctx = mp.get_context("spawn")
 
-    with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as executor:
-        futures = {
-            executor.submit(_generate_subject_from_job, job): job
-            for job in jobs
-        }
+    with ctx.Pool(
+        processes=n_workers,
+        maxtasksperchild=max_tasks_per_worker,
+    ) as pool:
+        results_iter = pool.imap_unordered(
+            _generate_subject_from_job,
+            jobs,
+            chunksize=1,
+        )
 
-        with tqdm(total=len(futures), desc="InitSurf", unit="subj") as pbar:
-            for fut in as_completed(futures):
-                result = fut.result()
+        with tqdm(total=len(jobs), desc="InitSurf", unit="subj") as pbar:
+            for result in results_iter:
                 _log_result_summary(result)
                 results.append(result)
 
-                ok, partial, skipped, failed = _status_counts(results)
+                ok, skipped_existing, failed = _status_counts(results)
                 pbar.set_postfix_str(
-                    f"ok={ok} partial={partial} skipped={skipped} failed={failed}"
+                    f"ok={ok} skipped_existing={skipped_existing} failed={failed}"
                 )
                 pbar.update(1)
 
@@ -1141,14 +1398,25 @@ def main(cfg: DictConfig) -> None:
         df = df[df["split"].astype(str).str.strip().str.lower().isin(wanted)].copy()
 
     if df.empty:
-        log.warning(f"No rows found in split_file for split='{split_name}'. Nothing to do.")
-        return
+        raise ValueError(f"No rows found in split_file for split='{split_name}'")
 
     ses = _normalize_session_label(str(cfg.dataset.session_label))
-    space = str(cfg.dataset.space)
-    dataset_version = str(OmegaConf.select(cfg, "outputs.dataset_version", default="0.3"))
+    space = str(cfg.dataset.space).strip()
     params = OmegaConf.to_container(cfg.params, resolve=True)
+    if not isinstance(params, dict):
+        raise TypeError("cfg.params must resolve to a mapping")
+    _validate_params(params)
+
     n_workers = int(OmegaConf.select(cfg, "n_workers", default=1))
+    max_tasks_per_worker = int(
+        OmegaConf.select(cfg, "max_tasks_per_worker", default=1)
+    )
+    if n_workers < 1:
+        raise ValueError("n_workers must be >= 1")
+    if max_tasks_per_worker < 1:
+        raise ValueError("max_tasks_per_worker must be >= 1")
+
+    _validate_runtime_dependencies()
 
     jobs: List[Dict[str, Any]] = []
 
@@ -1157,10 +1425,10 @@ def main(cfg: DictConfig) -> None:
 
         write_dataset_description(
             str(single_out_root),
-            name="scpp-initsurf",
-            version=dataset_version,
+            name="sc-initsurf",
         )
 
+        _validate_unique_rows(df, ["subject"])
         entries = df[["subject"]].drop_duplicates().reset_index(drop=True)
         log.info(f"InitSurf: {len(entries)} subjects (mode=single, split={split_name})")
 
@@ -1198,10 +1466,10 @@ def main(cfg: DictConfig) -> None:
         for ds_key in dataset_keys:
             write_dataset_description(
                 str(out_roots_map[ds_key]),
-                name="scpp-initsurf",
-                version=dataset_version,
+                name="sc-initsurf",
             )
 
+        _validate_unique_rows(df, ["dataset", "subject"])
         entries = df[["dataset", "subject"]].drop_duplicates().reset_index(drop=True)
         log.info(f"InitSurf: {len(entries)} subject-dataset pairs (mode=multi, split={split_name})")
 
@@ -1222,19 +1490,26 @@ def main(cfg: DictConfig) -> None:
             })
 
     t0 = time.time()
-    results = _run_jobs(jobs, n_workers=n_workers)
+    results = _run_jobs(
+        jobs,
+        n_workers=n_workers,
+        max_tasks_per_worker=max_tasks_per_worker,
+    )
     elapsed = time.time() - t0
 
-    ok, partial, skipped, failed = _status_counts(results)
+    ok, skipped_existing, failed = _status_counts(results)
 
     summary_path = os.path.join(str(cfg.outputs.log_dir), "generate_initsurf_summary.csv")
     _write_run_summary(results, summary_path)
 
     log.info(
         f"InitSurf generation finished in {elapsed / 60:.2f} min. "
-        f"OK={ok}, PARTIAL={partial}, SKIPPED={skipped}, FAILED={failed}. "
+        f"OK={ok}, SKIPPED_EXISTING={skipped_existing}, FAILED={failed}. "
         f"Summary: {summary_path}"
     )
+
+    if failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

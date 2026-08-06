@@ -1,17 +1,17 @@
 user_config: null
 
 dataset:
-  split_file: /project/hippocampus/common/kaveh/workspace/datasets/splits/dataset_split.csv
+  split_file: /path/to/datasets/splits/dataset_split.csv
   train_split_name: train
   val_split_name: val
   session_label: '01'
   space: MNI152
   roots:
-    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-preproc-0.2
-    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-preproc-0.2
+    HCP_YA: /path/to/hcpya-u100/derivatives/sc-preproc
+    OASIS1: /path/to/oasis-1/derivatives/sc-preproc
   initsurf_roots:
-    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-initsurf-0.2
-    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-initsurf-0.2
+    HCP_YA: /path/to/hcpya-u100/derivatives/sc-initsurf
+    OASIS1: /path/to/oasis-1/derivatives/sc-initsurf
   surface_name:
     - lh_pial
     - lh_white
@@ -20,6 +20,7 @@ dataset:
   prob_clip_min: 0.0
   prob_clip_max: 1.0
   prob_gamma: 1.0
+  strict_missing: true
 
   aug_prob: 0.3
   aug_rot_range_deg: 3.0
@@ -44,9 +45,11 @@ trainer:
   weight_decay: 1.0e-4
 
   points_per_image: 180000
-  val_points_per_image: 150000 
+  val_points_per_image: 150000
 
   num_workers: 4
+  persistent_workers: true
+  prefetch_factor: 2
   log_level: INFO
   mesh_chunk: 4
   grad_clip_norm: 1.0
@@ -99,6 +102,7 @@ objective:
   hd_lambda_mm: 0.75
   hd_points: 50000
 
+  # Nearest-normal signed nesting proxy; preserve 8.0 for exp33 reproducibility.
   signed_nested_weight: 8.0
   signed_margin_mm: 0.55
   signed_points: 50000
@@ -116,4 +120,5 @@ checkpoint:
   require_collision_for_best: true
 
 outputs:
-  root: /project/hippocampus/common/kaveh/workspace/simcortex-runs/deform/exp33_hcpya+oasis1
+  root: /path/to/simcortex-runs/deform/exp33_hcpya+oasis1
+  allow_existing: false

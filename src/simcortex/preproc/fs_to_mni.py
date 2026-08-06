@@ -36,14 +36,21 @@ import numpy as np
 import typer
 from nibabel.freesurfer.io import read_geometry
 
-try:
-    import ants  # type: ignore
-except Exception as e:  # pragma: no cover
-    raise RuntimeError("ANTsPy is required. Install it with: pip install antspyx") from e
+def _require_antspy() -> Any:
+    """Import ANTsPy only when Stage 1 functionality is executed."""
+    try:
+        import ants
+    except Exception as exc: 
+        raise RuntimeError(
+            "ANTsPy is required for Stage 1 preprocessing. "
+            "Install it with: python -m pip install \"simcortex[preproc]\""
+        ) from exc
+
+    return ants
 
 APP_NAME = "SimCortex-Preproc-ANTsPy"
-__version__ = "0.1"
-PIPELINE_NAME = "sc-preproc-0.1"
+__version__ = "2.0.0"
+PIPELINE_NAME = "sc-preproc"
 RAS_TO_LPS_4 = np.diag([-1.0, -1.0, 1.0, 1.0]).astype(np.float64)
 
 app = typer.Typer(
@@ -280,6 +287,7 @@ def ants_affine_to_homogeneous_lps(tx_path: Path) -> np.ndarray:
     where c is the fixed transform center. The equivalent homogeneous matrix is:
         y = A @ x + (t + c - A @ c)
     """
+    ants = _require_antspy()
     tx = ants.read_transform(str(tx_path))
     params = np.asarray(tx.parameters, dtype=np.float64)
     fixed = np.asarray(tx.fixed_parameters, dtype=np.float64)
@@ -372,6 +380,7 @@ def run_n4_bias_correction(
     logger: logging.Logger,
 ) -> None:
     logger.info("N4 bias-field correction: %s -> %s", t1_native_path.name, out_path.name)
+    ants = _require_antspy()
     img = ants.image_read(str(t1_native_path))
     mask = ants.get_mask(img) if use_mask else None
     corrected = ants.n4_bias_field_correction(
@@ -392,6 +401,7 @@ def estimate_linear_registration(
     out_affine_mat_path: Path,
     logger: logging.Logger,
 ) -> Any:
+    ants = _require_antspy()
     fixed = ants.image_read(str(fixed_mni_path))
     moving = ants.image_read(str(moving_t1_path))
 
@@ -428,6 +438,7 @@ def apply_linear_transform_to_volume(
     logger: logging.Logger,
 ) -> None:
     logger.info("Apply transform to volume: %s -> %s (%s)", moving_path.name, out_path.name, interpolation)
+    ants = _require_antspy()
     moving = ants.image_read(str(moving_path))
     fixed = ants.image_read(str(fixed_path))
     warped = ants.apply_transforms(
@@ -591,7 +602,10 @@ def process_one(
             logger=logger,
         )
         logger.info("[%s] Write warped MNI T1: %s", stem, f_t1_mni.name)
-        ants.image_write(reg["warpedmovout"], str(f_t1_mni))
+        _require_antspy().image_write(
+            reg["warpedmovout"],
+            str(f_t1_mni),
+        )
     else:
         logger.debug("[%s] Reusing existing ANTs affine and T1 MNI output.", stem)
 
@@ -708,7 +722,7 @@ def process_one(
 @app.callback(invoke_without_command=True)
 def main(
     freesurfer_root: Path = typer.Option(..., "--freesurfer-root", exists=True, file_okay=False, dir_okay=True, help="Root containing FreeSurfer subject directories."),
-    out_deriv_root: Path = typer.Option(..., "--out-deriv-root", help="Output BIDS-derivatives-like root, typically derivatives/sc-preproc-0.1."),
+    out_deriv_root: Path = typer.Option(..., "--out-deriv-root", help="Output BIDS-derivatives-like root, typically derivatives/sc-preproc."),
     mni_template: Path = typer.Option(..., "--mni-template", exists=True, file_okay=True, dir_okay=False, help="Reference MNI template image."),
     participant_label: Optional[list[str]] = typer.Option(None, "--participant-label", "-p", help="One or more participants, e.g. sub-100307 or 100307."),
     session_label: str = typer.Option("01", "--session-label", "-s", help="Session label, written as ses-<label>."),

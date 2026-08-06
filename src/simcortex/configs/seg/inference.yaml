@@ -6,14 +6,16 @@ dataset:
   # Multi-dataset mode:
   #   keep path null and define roots below.
   path: null
-  split_file: /project/hippocampus/common/kaveh/workspace/datasets/splits/dataset_split.csv
+  split_file: /path/to/datasets/splits/dataset_split.csv
+  # Use "all" to create inputs for downstream InitSurf and deformation stages.
+  # Use "test" only for a test-only inference run.
   split_name: all
   session_label: "01"
   space: "MNI152"
   pad_mult: 16
   roots:
-    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-preproc-0.2
-    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-preproc-0.2
+    HCP_YA: /path/to/datasets/hcpya-u100/derivatives/sc-preproc
+    OASIS1: /path/to/datasets/oasis-1/derivatives/sc-preproc
 
 model:
   in_channels: 1
@@ -21,7 +23,7 @@ model:
   features: [16, 32, 64, 128, 128]
   norm: instance
   dropout: 0.10
-  ckpt_path: /project/hippocampus/common/kaveh/workspace/simcortex-runs/seg/exp02_hcpya+oasis1/checkpoints/seg_best_dice.pt
+  ckpt_path: /path/to/seg_best_dice.pt
 
 trainer:
   device: cuda:0
@@ -34,9 +36,9 @@ outputs:
   out_root: null
   # Multi-dataset mode:
   out_roots:
-    HCP_YA: /project/hippocampus/common/kaveh/workspace/datasets/hcpya-u100/derivatives/sc-seg-0.2
-    OASIS1: /project/hippocampus/common/kaveh/workspace/datasets/oasis-1/derivatives/sc-seg-0.2
-  log_dir: /project/hippocampus/common/kaveh/workspace/simcortex-runs/seg/exp02_hcpya+oasis1/logs_infer
+    HCP_YA: /path/to/datasets/hcpya-u100/derivatives/sc-seg
+    OASIS1: /path/to/datasets/oasis-1/derivatives/sc-seg
+  log_dir: /path/to/simcortex-runs/seg/logs_infer
   overwrite: false
   overwrite_dataset_description: false
   tensorboard: true

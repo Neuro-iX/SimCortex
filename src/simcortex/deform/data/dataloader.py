@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import logging
-from typing import List
+from typing import List, Sequence
 
 import numpy as np
 import nibabel as nib
@@ -23,12 +23,74 @@ logger = logging.getLogger(__name__)
 # BIDS-derivatives path helpers
 # ----------------------------
 def _ses(session_label: str) -> str:
-    s = str(session_label)
+    s = str(session_label).strip()
+    if not s:
+        raise ValueError("session_label must not be empty")
     return s if s.startswith("ses-") else f"ses-{s}"
+
 
 def _sub(subject_label: str) -> str:
     s = str(subject_label).strip()
+    if not s or s.lower() in {"nan", "none", "sub-"}:
+        raise ValueError(f"Invalid subject label: {subject_label!r}")
     return s if s.startswith("sub-") else f"sub-{s}"
+
+
+def _normalize_subjects(subjects: Sequence[str]) -> List[str]:
+    normalized = [_sub(subject) for subject in subjects]
+    duplicates = sorted({subject for subject in normalized if normalized.count(subject) > 1})
+    if duplicates:
+        raise ValueError(f"Duplicate subject labels are not allowed: {duplicates[:20]}")
+    if not normalized:
+        raise ValueError("subjects must contain at least one subject")
+    return normalized
+
+
+def _validate_surface_names(surface_names: Sequence[str]) -> List[str]:
+    names = [str(name).strip() for name in surface_names]
+    if not names:
+        raise ValueError("surface_names must not be empty")
+    if len(names) != len(set(names)):
+        raise ValueError(f"surface_names contains duplicates: {names}")
+    unknown = sorted(set(names) - set(_SURF_MAP))
+    if unknown:
+        raise ValueError(f"Unknown surface names: {unknown}. Allowed: {sorted(_SURF_MAP)}")
+    return names
+
+
+def _validate_dataset_settings(
+    inshape_dhw,
+    prob_clip_min: float,
+    prob_clip_max: float,
+    prob_gamma: float,
+) -> tuple[tuple[int, int, int], float, float, float]:
+    inshape = tuple(int(value) for value in inshape_dhw)
+    if len(inshape) != 3 or any(value <= 0 for value in inshape):
+        raise ValueError(f"inshape_dhw must contain three positive integers, got {inshape}")
+
+    clip_min = float(prob_clip_min)
+    clip_max = float(prob_clip_max)
+    gamma = float(prob_gamma)
+    if not (0.0 <= clip_min <= clip_max <= 1.0):
+        raise ValueError(
+            "Probability clipping must satisfy 0 <= prob_clip_min <= "
+            f"prob_clip_max <= 1, got {clip_min} and {clip_max}"
+        )
+    if not np.isfinite(gamma) or gamma <= 0.0:
+        raise ValueError(f"prob_gamma must be finite and > 0, got {gamma}")
+    return inshape, clip_min, clip_max, gamma
+
+
+def _format_missing_inputs(kind: str, missing_by_subject) -> str:
+    lines = [
+        f"{kind} is missing required inputs for {len(missing_by_subject)} subject(s)."
+    ]
+    for subject, missing in missing_by_subject[:20]:
+        lines.append(f"  {subject}:")
+        lines.extend(f"    - {item}" for item in missing[:20])
+    if len(missing_by_subject) > 20:
+        lines.append(f"  ... and {len(missing_by_subject) - 20} more subject(s)")
+    return "\n".join(lines)
 
 def mni_t1_path(preproc_root: str, subj: str, session_label: str, space: str) -> str:
     ses = _ses(session_label)
@@ -69,7 +131,15 @@ def surf_path(root: str, subj: str, session_label: str, space: str, surf_name: s
 def read_nii(path: str):
     nii = nib.load(path)
     vol = nii.get_fdata().astype(np.float32)
-    aff = nii.affine.astype(np.float32)
+    aff = np.asarray(nii.affine, dtype=np.float32)
+
+    if vol.ndim != 3:
+        raise ValueError(f"Expected a 3D NIfTI volume at {path}, got shape={vol.shape}")
+    if aff.shape != (4, 4) or not np.isfinite(aff).all():
+        raise ValueError(f"Invalid affine in {path}: shape={aff.shape}")
+    det = float(np.linalg.det(aff[:3, :3]))
+    if not np.isfinite(det) or abs(det) < 1e-8:
+        raise ValueError(f"Singular or invalid affine in {path}: det={det}")
     return vol, aff
 
 
@@ -86,7 +156,7 @@ def _validate_mesh_arrays(v: np.ndarray, f: np.ndarray, path: str) -> None:
         raise ValueError(
             f"Invalid face indices in {path}: min={f.min()}, max={f.max()}, V={v.shape[0]}"
         )
-    
+
 
 def read_mesh(path: str):
     m = trimesh.load(path, process=False)
@@ -103,15 +173,24 @@ def read_mesh(path: str):
     return v, f
 
 def normalize_mri_mean_std(mri: np.ndarray) -> np.ndarray:
-    mask = (mri != 0)
+    if not np.isfinite(mri).all():
+        raise ValueError("MRI volume contains non-finite values")
+
+    mask = mri != 0
     if mask.sum() < 100:
-        m = float(mri.mean())
-        s = float(mri.std())
+        mean = float(mri.mean())
+        std = float(mri.std())
     else:
-        m = float(mri[mask].mean())
-        s = float(mri[mask].std())
-    s = max(s, 1e-6)
-    return ((mri - m) / s).astype(np.float32)
+        mean = float(mri[mask].mean())
+        std = float(mri[mask].std())
+
+    if not np.isfinite(mean) or not np.isfinite(std):
+        raise ValueError(f"MRI normalization statistics are invalid: mean={mean}, std={std}")
+    std = max(std, 1e-6)
+    normalized = ((mri - mean) / std).astype(np.float32)
+    if not np.isfinite(normalized).all():
+        raise ValueError("MRI normalization produced non-finite values")
+    return normalized
 
 
 
@@ -138,22 +217,32 @@ class CSRDeformDataset(Dataset):
         prob_clip_max: float = 1.0,
         prob_gamma: float = 1.0,
         aug: bool = False,  # backward-compatible no-op; augmentation is handled in train.py
+        strict_missing: bool = True,
     ):
         self.preproc_root = str(preproc_root)
         self.initsurf_root = str(initsurf_root)
-        self.subjects = [_sub(s) for s in subjects]
-        self.session_label = str(session_label)
-        self.space = str(space)
+        self.subjects = _normalize_subjects(subjects)
+        self.session_label = str(session_label).strip()
+        self.space = str(space).strip()
+        if not self.space:
+            raise ValueError("space must not be empty")
 
-        self.surface_names = list(surface_names)
-        self.inshape = tuple(int(x) for x in inshape_dhw)
-
-        self.prob_clip_min = float(prob_clip_min)
-        self.prob_clip_max = float(prob_clip_max)
-        self.prob_gamma = float(prob_gamma)
+        self.surface_names = _validate_surface_names(surface_names)
+        (
+            self.inshape,
+            self.prob_clip_min,
+            self.prob_clip_max,
+            self.prob_gamma,
+        ) = _validate_dataset_settings(
+            inshape_dhw,
+            prob_clip_min,
+            prob_clip_max,
+            prob_gamma,
+        )
+        self.strict_missing = bool(strict_missing)
 
         self.samples = []
-        dropped = 0
+        missing_by_subject = []
 
         for subj in self.subjects:
             mri_path = mni_t1_path(self.preproc_root, subj, self.session_label, self.space)
@@ -170,19 +259,16 @@ class CSRDeformDataset(Dataset):
                 if not os.path.isfile(ini_paths[s]): missing.append(ini_paths[s])
 
             if missing:
-                dropped += 1
-                logger.warning(
-                    "[CSRDeformDataset] Dropping %s because required files are missing:\n%s",
-                    subj,
-                    "\n".join(f"  - {p}" for p in missing),
-                )
+                missing_by_subject.append((subj, missing))
                 continue
 
             self.samples.append((subj, mri_path, prob_path, gt_paths, ini_paths))
 
-        if dropped > 0:
-            logger.warning(f"[CSRDeformDataset] Dropped {dropped} subjects due to missing files.")
-
+        if missing_by_subject:
+            message = _format_missing_inputs("CSRDeformDataset", missing_by_subject)
+            if self.strict_missing:
+                raise FileNotFoundError(message)
+            logger.warning("%s", message)
 
         if len(self.samples) == 0:
             raise RuntimeError(
@@ -199,7 +285,7 @@ class CSRDeformDataset(Dataset):
         mri, affine = read_nii(mri_path)
         prob, prob_affine = read_nii(prob_path)
 
-        if not np.allclose(prob_affine, affine, atol=1e-4):
+        if not np.allclose(prob_affine, affine, atol=1e-4, rtol=0.0):
             raise ValueError(
                 f"PROB/MRI affine mismatch for {subj}: "
                 f"prob_affine={prob_affine}, mri_affine={affine}"
@@ -291,9 +377,9 @@ class CSRDeformInferDataset(Dataset):
     Inference-only dataset for SurfDeform.
 
     Required inputs per subject:
-      - MNI-space preprocessed T1w image from simcortex-preproc
-      - ribbon probability map from simcortex-initsurf
-      - initial surfaces from simcortex-initsurf
+      - MNI-space preprocessed T1w image from sc-preproc
+      - ribbon probability map from sc-initsurf
+      - initial surfaces from sc-initsurf
     """
 
     def __init__(
@@ -308,22 +394,32 @@ class CSRDeformInferDataset(Dataset):
         prob_clip_min: float = 0.0,
         prob_clip_max: float = 1.0,
         prob_gamma: float = 1.0,
+        strict_missing: bool = True,
     ):
         self.preproc_root = str(preproc_root)
         self.initsurf_root = str(initsurf_root)
-        self.subjects = [_sub(s) for s in subjects]
-        self.session_label = str(session_label)
-        self.space = str(space)
+        self.subjects = _normalize_subjects(subjects)
+        self.session_label = str(session_label).strip()
+        self.space = str(space).strip()
+        if not self.space:
+            raise ValueError("space must not be empty")
 
-        self.surface_names = list(surface_names)
-        self.inshape = tuple(int(x) for x in inshape_dhw)
-
-        self.prob_clip_min = float(prob_clip_min)
-        self.prob_clip_max = float(prob_clip_max)
-        self.prob_gamma = float(prob_gamma)
+        self.surface_names = _validate_surface_names(surface_names)
+        (
+            self.inshape,
+            self.prob_clip_min,
+            self.prob_clip_max,
+            self.prob_gamma,
+        ) = _validate_dataset_settings(
+            inshape_dhw,
+            prob_clip_min,
+            prob_clip_max,
+            prob_gamma,
+        )
+        self.strict_missing = bool(strict_missing)
 
         self.samples = []
-        dropped = 0
+        missing_by_subject = []
 
         for subj in self.subjects:
             mri_path = mni_t1_path(self.preproc_root, subj, self.session_label, self.space)
@@ -343,22 +439,16 @@ class CSRDeformInferDataset(Dataset):
                     missing.append(ini_paths[s])
 
             if missing:
-                dropped += 1
-                logger.warning(
-                    "[CSRDeformInferDataset] Dropping %s because required inference inputs are missing:\n%s",
-                    subj,
-                    "\n".join(f"  - {p}" for p in missing),
-                )
+                missing_by_subject.append((subj, missing))
                 continue
 
             self.samples.append((subj, mri_path, prob_path, ini_paths))
 
-        if dropped > 0:
-            logger.warning(
-                "[CSRDeformInferDataset] Dropped %d/%d subjects due to missing inference inputs.",
-                dropped,
-                len(self.subjects),
-            )
+        if missing_by_subject:
+            message = _format_missing_inputs("CSRDeformInferDataset", missing_by_subject)
+            if self.strict_missing:
+                raise FileNotFoundError(message)
+            logger.warning("%s", message)
 
         if len(self.samples) == 0:
             raise RuntimeError(
@@ -375,7 +465,7 @@ class CSRDeformInferDataset(Dataset):
         mri, affine = read_nii(mri_path)
         prob, prob_affine = read_nii(prob_path)
 
-        if not np.allclose(prob_affine, affine, atol=1e-4):
+        if not np.allclose(prob_affine, affine, atol=1e-4, rtol=0.0):
             raise ValueError(
                 f"Prob/MRI affine mismatch for subject '{subj}'.\n"
                 f"  Prob affine:\n{prob_affine}\n"
