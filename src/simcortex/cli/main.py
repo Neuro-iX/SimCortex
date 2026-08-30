@@ -105,7 +105,6 @@ app.add_typer(
     help="Stage 1 — Preprocessing: FreeSurfer/native space to MNI152.",
 )
 
-
 # ---------------------------------------------------------------------
 # Stage 2 — Segmentation
 # ---------------------------------------------------------------------
