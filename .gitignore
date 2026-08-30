@@ -1,48 +1,115 @@
-# Python
+# =============================================================================
+# SimCortex
+# Git ignore rules for local, generated, and build artifacts.
+#
+# Scientific source code, configuration files, evaluation scripts, and
+# experiment definitions should remain visible to Git unless explicitly
+# excluded below.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Python bytecode and caches
+# -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
-*.egg-info/
-.dist/
+*$py.class
+
+
+# -----------------------------------------------------------------------------
+# Python packaging / build artifacts
+# -----------------------------------------------------------------------------
 build/
 dist/
+*.egg
+*.egg-info/
+.eggs/
+wheels/
+pip-wheel-metadata/
 
-# Environments
+
+# -----------------------------------------------------------------------------
+# Test, coverage, lint, and type-checking caches
+# -----------------------------------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+
+# -----------------------------------------------------------------------------
+# Virtual environments and local environment files
+# -----------------------------------------------------------------------------
 .venv/
-.env/
+venv/
+env/
+ENV/
 
+.env
+.env.local
+
+
+# -----------------------------------------------------------------------------
 # Jupyter
+# -----------------------------------------------------------------------------
 .ipynb_checkpoints/
 
-# OS / editor
-.DS_Store
+
+# -----------------------------------------------------------------------------
+# IDE / editor files
+# -----------------------------------------------------------------------------
 .vscode/
 .idea/
 
-# Logs
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+
+# -----------------------------------------------------------------------------
+# Operating-system metadata
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+
+# -----------------------------------------------------------------------------
+# Runtime logs and temporary files
+# -----------------------------------------------------------------------------
 *.log
-
-
-
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.egg-info/
-dist/
-build/
 .pipeline.log
 pipeline.log
-docker/simcortexpp-env.tar.gz
-simcortexpp_0.1.5.sif
-outputResult.nii
-outputResult.nii.gz
+
+*.tmp
+*.temp
+*.bak
 
 
-# Hydra outputs and execution logs
-outputs/
+# -----------------------------------------------------------------------------
+# Hydra runtime metadata
+# -----------------------------------------------------------------------------
 .hydra/
 
-# Local Docker build artifacts
+
+# -----------------------------------------------------------------------------
+# Local Docker / container build artifacts
+# -----------------------------------------------------------------------------
+docker/*.tar
 docker/*.tar.gz
 docker/*.tgz
-docker/*.tar
+*.sif
+
+
+# -----------------------------------------------------------------------------
+# Generated standalone pipeline outputs
+# -----------------------------------------------------------------------------
+outputResult.nii
+outputResult.nii.gz
