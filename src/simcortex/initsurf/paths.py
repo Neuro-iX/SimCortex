@@ -1,3 +1,5 @@
+"""Canonical path helpers for InitSurf inputs and outputs."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,12 +15,6 @@ def _ses_id(ses: str = "01") -> str:
     return s if s.startswith("ses-") else f"ses-{s}"
 
 
-def _stem(subject: str, ses: str = "01") -> str:
-    sub = _sub_id(subject)
-    ses_id = _ses_id(ses)
-    return f"{sub}_{ses_id}"
-
-
 def anat_dir(root: str | Path, subject: str, ses: str = "01") -> Path:
     return Path(root) / _sub_id(subject) / _ses_id(ses) / "anat"
 
@@ -27,7 +23,12 @@ def surf_dir(root: str | Path, subject: str, ses: str = "01") -> Path:
     return Path(root) / _sub_id(subject) / _ses_id(ses) / "surfaces"
 
 
-def t1_mni_path(preproc_root: str | Path, subject: str, ses: str = "01", space: str = "MNI152") -> str:
+def t1_mni_path(
+    preproc_root: str | Path,
+    subject: str,
+    ses: str = "01",
+    space: str = "MNI152",
+) -> str:
     sub = _sub_id(subject)
     ses_id = _ses_id(ses)
     return str(
@@ -36,7 +37,12 @@ def t1_mni_path(preproc_root: str | Path, subject: str, ses: str = "01", space: 
     )
 
 
-def seg9_dseg_path(seg_root: str | Path, subject: str, ses: str = "01", space: str = "MNI152") -> str:
+def seg9_dseg_path(
+    seg_root: str | Path,
+    subject: str,
+    ses: str = "01",
+    space: str = "MNI152",
+) -> str:
     sub = _sub_id(subject)
     ses_id = _ses_id(ses)
     return str(
@@ -45,9 +51,17 @@ def seg9_dseg_path(seg_root: str | Path, subject: str, ses: str = "01", space: s
     )
 
 
-def out_anat_dir(out_root: str | Path, subject: str, ses: str = "01") -> str:
+def out_anat_dir(
+    out_root: str | Path,
+    subject: str,
+    ses: str = "01",
+) -> str:
     return str(anat_dir(out_root, subject, ses))
 
 
-def out_surf_dir(out_root: str | Path, subject: str, ses: str = "01") -> str:
+def out_surf_dir(
+    out_root: str | Path,
+    subject: str,
+    ses: str = "01",
+) -> str:
     return str(surf_dir(out_root, subject, ses))
