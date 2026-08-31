@@ -655,6 +655,22 @@ def save_model_state(model, path: str):
     torch.save(net.state_dict(), path)
 
 
+def _load_trusted_checkpoint(path: str, *, map_location="cpu"):
+    """Load a trusted training checkpoint with PyTorch-version compatibility."""
+    try:
+        return torch.load(
+            path,
+            map_location=map_location,
+            weights_only=False,
+        )
+    except TypeError:
+        # Compatibility with PyTorch versions predating weights_only.
+        return torch.load(
+            path,
+            map_location=map_location,
+        )
+
+
 def extract_model_state_dict(checkpoint):
     """Return a model state_dict from either a raw state_dict or a full checkpoint."""
     state = checkpoint
@@ -989,7 +1005,7 @@ def main(cfg: DictConfig):
             inshape=inshape,
             sigma=float(cfg.model.sigma),
             geom_ratio=float(getattr(cfg.model, "geom_ratio", 0.5)),
-            geom_depth=int(getattr(cfg.model, "geom_depth", 4)),
+            geom_depth=int(getattr(cfg.model, "geom_depth", 6)),
             gn_groups=int(getattr(cfg.model, "gn_groups", 8)),
             gate_init=float(getattr(cfg.model, "gate_init", -3.0)),
             dropout=float(getattr(cfg.model, "dropout", 0.0)),
@@ -1000,7 +1016,7 @@ def main(cfg: DictConfig):
         if init_ckpt:
             if rank == 0:
                 log.info("Loading init_ckpt: %s", init_ckpt)
-            raw_ckpt = torch.load(init_ckpt, map_location="cpu")
+            raw_ckpt = _load_trusted_checkpoint(init_ckpt, map_location="cpu")
             sd = extract_model_state_dict(raw_ckpt)
             missing, unexpected = model.load_state_dict(
                 sd,
@@ -1164,7 +1180,7 @@ def main(cfg: DictConfig):
         if resume_from:
             if rank == 0:
                 log.info("Resuming from full checkpoint: %s", resume_from)
-            ckpt = torch.load(resume_from, map_location="cpu")
+            ckpt = _load_trusted_checkpoint(resume_from, map_location="cpu")
             if not isinstance(ckpt, dict) or "model" not in ckpt or "optimizer" not in ckpt:
                 raise ValueError(
                     "trainer.resume_from must point to a full checkpoint containing at least "
