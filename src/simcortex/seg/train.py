@@ -318,6 +318,40 @@ def _seed_worker(worker_id: int) -> None:
     random.seed(worker_seed)
 
 
+def _load_trusted_checkpoint(path: Path, *, map_location: Any) -> Any:
+    """Load a SimCortex-owned checkpoint across supported PyTorch versions."""
+    try:
+        return torch.load(path, map_location=map_location, weights_only=False)
+    except TypeError:
+        # PyTorch versions that predate the weights_only argument.
+        return torch.load(path, map_location=map_location)
+
+
+def _strip_module_prefix(
+    state_dict: dict[str, torch.Tensor],
+) -> dict[str, torch.Tensor]:
+    """Remove a leading DataParallel/DDP ``module.`` prefix when present."""
+    if not any(key.startswith("module.") for key in state_dict):
+        return state_dict
+
+    return {
+        key.replace("module.", "", 1): value
+        for key, value in state_dict.items()
+    }
+
+
+def _load_model_state_dict(
+    model: nn.Module,
+    state_dict: dict[str, torch.Tensor],
+) -> None:
+    """Load an unwrapped state dict into a plain, DataParallel, or DDP model."""
+    target = model.module if hasattr(model, "module") else model
+    target.load_state_dict(
+        _strip_module_prefix(state_dict),
+        strict=True,
+    )
+
+
 # -----------------------------------------------------------------------------
 # Dataset construction
 # -----------------------------------------------------------------------------
@@ -666,11 +700,14 @@ def load_resume_checkpoint(
         raise FileNotFoundError(f"Resume checkpoint not found: {ckpt_path}")
 
     logging.info("Loading resume checkpoint: %s", ckpt_path)
-    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt = _load_trusted_checkpoint(
+        ckpt_path,
+        map_location=device,
+    )
 
     # Full checkpoint format.
     if isinstance(ckpt, dict) and "model" in ckpt:
-        model.load_state_dict(ckpt["model"], strict=True)
+        _load_model_state_dict(model, ckpt["model"])
         if "optimizer" in ckpt:
             optimizer.load_state_dict(ckpt["optimizer"])
             _optimizer_to_device(optimizer, device)
@@ -681,7 +718,7 @@ def load_resume_checkpoint(
         return int(ckpt.get("epoch", 0)), float(ckpt.get("best_dice", -1.0)), int(ckpt.get("best_epoch", -1))
 
     # Model-only state_dict format.
-    model.load_state_dict(ckpt, strict=True)
+    _load_model_state_dict(model, ckpt)
     return 0, -1.0, -1
 
 
