@@ -57,6 +57,15 @@ def setup_logger(log_dir: str | Path, filename: str = "inference.log") -> None:
     root.addHandler(sh)
 
 
+def _load_trusted_checkpoint(path: Path, *, map_location: Any) -> Any:
+    """Load a SimCortex-owned checkpoint across supported PyTorch versions."""
+    try:
+        return torch.load(path, map_location=map_location, weights_only=False)
+    except TypeError:
+        # PyTorch versions that predate the weights_only argument.
+        return torch.load(path, map_location=map_location)
+
+
 def _norm_ses(s: Any) -> str:
     s = str(s)
     return s if s.startswith("ses-") else f"ses-{s}"
@@ -149,7 +158,7 @@ def load_model_from_checkpoint(cfg: DictConfig, device: torch.device) -> torch.n
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
     logging.info("Loading checkpoint: %s", ckpt_path)
-    checkpoint = torch.load(str(ckpt_path), map_location="cpu")
+    checkpoint = _load_trusted_checkpoint(ckpt_path, map_location="cpu")
     checkpoint_cfg = _checkpoint_cfg(checkpoint)
 
     model = build_model(cfg, checkpoint_cfg=checkpoint_cfg)
