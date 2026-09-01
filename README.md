@@ -267,10 +267,21 @@ For each FreeSurfer subject, Stage 1 performs the following steps:
   - `mri/filled.mgz`
   - `surf/lh.white`, `surf/rh.white`
   - `surf/lh.pial`, `surf/rh.pial` (or `*.pial.T1` if present)
-- An MNI template image, for example:
+- An MNI152 1 mm reference template image supplied by the user.
+
+The MNI template is an external scientific input and is not bundled with the
+SimCortex Python package. Pass its path explicitly with `--mni-template`.
+
+For exact reproducibility of the SimCortex preprocessing setup used during
+development and evaluation, the reference image had the following properties:
 
 ```text
-src/MNI152_T1_1mm.nii.gz
+Shape:      182 × 218 × 182
+Resolution: 1 × 1 × 1 mm
+SHA256:     9c255b63e668242b94621b446be0c9a04a1216bd25423b746a0c6f9443ea0fc0
+Use the same template bytes when reproducing previously generated SimCortex
+derivatives. The repository does not make a provenance or redistribution claim
+for this external reference image.
 ```
 
 ### Python dependencies
@@ -296,7 +307,7 @@ Stage 1 requires Python packages including:
 simcortex fs-to-mni \
   --freesurfer-root /path/to/datasets/<dataset>/derivatives/freesurfer-7.4.1 \
   --out-deriv-root /path/to/datasets/<dataset>/derivatives/sc-preproc \
-  --mni-template /path/to/SimCortex/src/MNI152_T1_1mm.nii.gz \
+  --mni-template /path/to/MNI152_T1_1mm.nii.gz \
   --transform-type affine \
   --n4 \
   --with-aparc-aseg \
@@ -310,7 +321,7 @@ simcortex fs-to-mni \
 simcortex fs-to-mni \
   --freesurfer-root /path/to/datasets/<dataset>/derivatives/freesurfer-7.4.1 \
   --out-deriv-root /path/to/datasets/<dataset>/derivatives/sc-preproc \
-  --mni-template /path/to/SimCortex/src/MNI152_T1_1mm.nii.gz \
+  --mni-template /path/to/MNI152_T1_1mm.nii.gz \
   --participant-label sub-0001 \
   --participant-label sub-0019 \
   --transform-type affine \
