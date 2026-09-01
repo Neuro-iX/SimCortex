@@ -279,10 +279,11 @@ development and evaluation, the reference image had the following properties:
 Shape:      182 × 218 × 182
 Resolution: 1 × 1 × 1 mm
 SHA256:     9c255b63e668242b94621b446be0c9a04a1216bd25423b746a0c6f9443ea0fc0
+```
+
 Use the same template bytes when reproducing previously generated SimCortex
 derivatives. The repository does not make a provenance or redistribution claim
 for this external reference image.
-```
 
 ### Python dependencies
 
