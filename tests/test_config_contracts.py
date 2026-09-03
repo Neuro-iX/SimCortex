@@ -5,7 +5,8 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 
-CONFIG_ROOT = Path("src/simcortex/configs")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CONFIG_ROOT = REPO_ROOT / "src" / "simcortex" / "configs"
 
 SEG_INFER = CONFIG_ROOT / "seg" / "inference.yaml"
 SEG_EVAL = CONFIG_ROOT / "seg" / "eval.yaml"
