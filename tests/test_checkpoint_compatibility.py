@@ -7,6 +7,7 @@ import torch
 
 import simcortex.seg.inference as seg_infer
 import simcortex.seg.train as seg_train
+import simcortex.deform.inference as deform_infer
 import simcortex.deform.train as deform_train
 
 
@@ -213,6 +214,7 @@ def test_deformation_extract_rejects_non_dict_checkpoint():
     [
         seg_infer._load_trusted_checkpoint,
         seg_train._load_trusted_checkpoint,
+        deform_infer._load_trusted_checkpoint,
         deform_train._load_trusted_checkpoint,
     ],
 )
@@ -280,6 +282,7 @@ def test_trusted_checkpoint_loaders_preserve_full_checkpoint(
     [
         seg_infer,
         seg_train,
+        deform_infer,
         deform_train,
     ],
 )
@@ -329,6 +332,7 @@ def test_trusted_loader_requests_weights_only_false(
     [
         seg_infer,
         seg_train,
+        deform_infer,
         deform_train,
     ],
 )
