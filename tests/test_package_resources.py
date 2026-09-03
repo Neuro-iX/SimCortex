@@ -6,6 +6,8 @@ import hashlib
 from importlib import metadata, resources
 from pathlib import Path
 
+import simcortex
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PACKAGE = PROJECT_ROOT / "src" / "simcortex"
@@ -32,6 +34,11 @@ EXPECTED_LUT_SHA256 = (
 def test_installed_distribution_version():
     """Installed package metadata must match the finalized release version."""
     assert metadata.version("simcortex") == "2.0.0"
+
+
+def test_public_package_version_matches_distribution_metadata():
+    """The public package version must come from installed distribution metadata."""
+    assert simcortex.__version__ == metadata.version("simcortex")
 
 
 def test_required_resources_are_available_via_importlib():
