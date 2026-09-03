@@ -5,14 +5,38 @@ import subprocess
 import sys
 from collections.abc import Sequence
 
+import click
 import typer
 
+from simcortex import __version__
 from simcortex.preproc.fs_to_mni import app as fs_to_mni_app
 
 
 app = typer.Typer(
-    help="SimCortex (SC) CLI: preprocessing, segmentation, initial surfaces, and deformation."
+    help="SimCortex (SC) CLI: preprocessing, segmentation, initial surfaces, and deformation.",
+    invoke_without_command=True,
+    no_args_is_help=False,
 )
+
+
+@app.callback()
+def root_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show the SimCortex version and exit.",
+        is_eager=True,
+    ),
+) -> None:
+    """SimCortex command-line interface."""
+    if version:
+        typer.echo(f"simcortex {__version__}")
+        raise typer.Exit()
+
+    if ctx.invoked_subcommand is None:
+        raise click.UsageError("Missing command.")
 
 # This lets commands forward Hydra-style arguments such as:
 #   dataset.root=/path
