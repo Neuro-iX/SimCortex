@@ -153,11 +153,27 @@ def _detect_deform_infer_mode(cfg):
         "  - dataset.roots + dataset.initsurf_roots + outputs.out_roots (multi-dataset)"
     )
 
+def _load_trusted_checkpoint(path: str, *, map_location="cpu"):
+    """Load a trusted full PyTorch checkpoint across torch versions."""
+    try:
+        return torch.load(
+            path,
+            map_location=map_location,
+            weights_only=False,
+        )
+    except TypeError:
+        # Compatibility with PyTorch versions that predate weights_only.
+        return torch.load(
+            path,
+            map_location=map_location,
+        )
+
+
 def load_checkpoint(model: torch.nn.Module, ckpt_path: str, strict: bool = True):
     if not os.path.isfile(ckpt_path):
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
-    sd = torch.load(ckpt_path, map_location="cpu")
+    sd = _load_trusted_checkpoint(ckpt_path, map_location="cpu")
     if isinstance(sd, dict) and ("state_dict" in sd or "model" in sd):
         sd = sd.get("state_dict", sd.get("model", sd))
 
