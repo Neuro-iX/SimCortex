@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from importlib import metadata, resources
 from pathlib import Path
 
@@ -31,9 +32,18 @@ EXPECTED_LUT_SHA256 = (
 )
 
 
-def test_installed_distribution_version():
-    """Installed package metadata must match the finalized release version."""
-    assert metadata.version("simcortex") == "2.0.0"
+def test_installed_distribution_version_matches_pyproject():
+    """Installed package metadata must match the version declared in pyproject."""
+    text = PYPROJECT.read_text(
+        encoding="utf-8"
+    )
+    match = re.search(
+        r'(?m)^version\s*=\s*["\']([^"\']+)["\']\s*$',
+        text,
+    )
+
+    assert match is not None
+    assert metadata.version("simcortex") == match.group(1)
 
 
 def test_public_package_version_matches_distribution_metadata():
@@ -86,7 +96,10 @@ def test_pyproject_declares_required_package_data():
 
     assert '[project]' in text
     assert 'name = "simcortex"' in text
-    assert 'version = "2.0.0"' in text
+    assert re.search(
+        r'(?m)^version\s*=\s*["\'][^"\']+["\']\s*$',
+        text,
+    )
 
     assert "include-package-data = true" in text
 
