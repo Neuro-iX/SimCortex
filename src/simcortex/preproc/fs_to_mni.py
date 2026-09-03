@@ -719,7 +719,7 @@ def process_one(
 @app.callback(invoke_without_command=True)
 def main(
     freesurfer_root: Path = typer.Option(..., "--freesurfer-root", exists=True, file_okay=False, dir_okay=True, help="Root containing FreeSurfer subject directories."),
-    out_deriv_root: Path = typer.Option(..., "--out-deriv-root", help="Output BIDS-derivatives-like root, typically derivatives/sc-preproc-0.1."),
+    out_deriv_root: Path = typer.Option(..., "--out-deriv-root", help="Output BIDS-derivatives-like root, typically derivatives/sc-preproc."),
     mni_template: Path = typer.Option(..., "--mni-template", exists=True, file_okay=True, dir_okay=False, help="Reference MNI template image."),
     participant_label: Optional[list[str]] = typer.Option(None, "--participant-label", "-p", help="One or more participants, e.g. sub-100307 or 100307."),
     session_label: str = typer.Option("01", "--session-label", "-s", help="Session label, written as ses-<label>."),
