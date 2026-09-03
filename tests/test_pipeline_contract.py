@@ -15,7 +15,8 @@ import pytest
 # scripts/ is intentionally not a Python package, so load the production
 # orchestrator directly from its file while registering it in sys.modules.
 MODULE_NAME = "_simcortex_run_pipeline_contract"
-SCRIPT_PATH = Path("scripts/run_pipeline.py")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_PATH = REPO_ROOT / "scripts" / "run_pipeline.py"
 
 _spec = importlib.util.spec_from_file_location(
     MODULE_NAME,
