@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -13,6 +14,8 @@ from typer.testing import CliRunner
 
 import simcortex.cli.main as cli
 
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 runner = CliRunner()
 
@@ -419,10 +422,11 @@ def test_cli_source_contains_no_stale_scpp_name():
 
 def test_pyproject_exposes_simcortex_console_script_only():
     """Packaging must point the public console command at this Typer app."""
-    text = open(
-        "pyproject.toml",
+    text = (
+        PROJECT_ROOT / "pyproject.toml"
+    ).read_text(
         encoding="utf-8",
-    ).read()
+    )
 
     assert re.search(
         r'(?m)^\s*simcortex\s*=\s*["\']'
