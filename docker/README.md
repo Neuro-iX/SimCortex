@@ -1,9 +1,15 @@
 # SimCortex v2.0 Docker Guide
 
 This document explains how to build and run the **SimCortex v2.0** Docker image.
-It focuses on containerized execution of the `scpp` CLI for **Stage 2 (Segmentation)**, **Stage 3 (InitSurf)**, and **Stage 4 (Deform)**. For the full pipeline itself—stage logic, expected inputs and outputs, naming conventions, and workflow order—see the repository root `README.md`.
+It covers containerized execution of the `simcortex` CLI for all four stages:
+**Stage 1 (Preprocessing)**, **Stage 2 (Segmentation)**, **Stage 3 (InitSurf)**,
+and **Stage 4 (Deform)**.
 
-The Docker image is intended to provide a reproducible runtime for SimCortex, including the Python / CUDA / PyTorch / PyTorch3D stack used by the project.
+For detailed stage logic, expected inputs and outputs, naming conventions, and
+workflow order, see the repository root `README.md`.
+
+The Docker image provides a reproducible SimCortex runtime, including the
+Python / CUDA / PyTorch / PyTorch3D / ANTsPy stack used by the project.
 
 ---
 
@@ -29,22 +35,30 @@ The Docker image is intended to provide a reproducible runtime for SimCortex, in
 
 ## Overview
 
-The Docker image allows users to run SimCortex without recreating the full local environment manually. This is useful for:
+The Docker image allows users to run SimCortex without recreating the full local
+environment manually. This is useful for:
 
-- reproducibility across workstations and servers
-- simpler setup for collaborators
-- preserving a validated PyTorch / PyTorch3D stack
-- CLI-based workflows where datasets and outputs are mounted from the host
+- reproducibility across workstations and servers;
+- simpler setup for collaborators;
+- preserving a validated CUDA / PyTorch / PyTorch3D environment;
+- CLI-based workflows where datasets and outputs are mounted from the host;
+- running the same four public SimCortex stages documented in the root README.
 
-At the moment, the main published Docker image is intentionally focused on the **PyTorch / PyTorch3D-based stages** of the pipeline:
+The main Docker image supports the complete four-stage workflow:
 
-- **Stage 2 — Segmentation**
-- **Stage 3 — InitSurf**
-- **Stage 4 — Deform**
+1. **Stage 1 — Preprocessing**
+2. **Stage 2 — Segmentation**
+3. **Stage 3 — InitSurf**
+4. **Stage 4 — Deform**
 
-**Stage 1 — FreeSurfer to MNI152 preprocessing** is typically run outside Docker because it depends on external tools such as **FreeSurfer** and **NiftyReg**, and packaging those tools into the main image would substantially increase image size and maintenance burden.
+Stage 1 reads existing FreeSurfer subject outputs and performs MNI152
+registration with **ANTsPy**. It does not require FreeSurfer executables
+inside the container. The MNI152 reference image is an external
+scientific input and must be mounted into the container and supplied explicitly
+with `--mni-template`.
 
-The image is not intended to replace the project README. Instead, it provides a container runtime for the **Segmentation**, **InitSurf**, and **Deform** commands documented there. In the current recommended workflow, **Preprocessing (Stage 1)** is run outside the main Docker image.
+The Docker guide complements the repository root `README.md`; it does not define
+a separate workflow or naming convention.
 
 ---
 
@@ -63,19 +77,20 @@ Examples below use the local image tag:
 simcortex:2.0.0
 ```
 
-After publishing to Docker Hub, the tag can be:
+After publishing to Docker Hub, the corresponding versioned tag is:
 
 ```text
 kavehmoradkhani/simcortex:2.0.0
 ```
 
-Official repository:
+Repository:
 
 ```text
 https://hub.docker.com/r/kavehmoradkhani/simcortex
 ```
 
-Keep versioned tags even if you later publish `latest`, so users can pin an exact image for reproducibility.
+Keep versioned tags even if `latest` is also published so users can pin an exact
+image.
 
 ---
 
@@ -87,7 +102,17 @@ From the repository root:
 docker build -f docker/Dockerfile -t simcortex:2.0.0 .
 ```
 
-The image is expected to bundle the SimCortex runtime stack, including the packaged `scpp` CLI and Hydra YAML configs.
+The image is expected to bundle the SimCortex runtime stack, including the
+packaged `simcortex` CLI, ANTsPy, PyTorch, PyTorch3D, and Hydra configuration
+files.
+
+The current Dockerfile expects the packed environment archive:
+
+```text
+docker/simcortex-env.tar.gz
+```
+
+to be present in the Docker build context.
 
 ---
 
@@ -99,19 +124,20 @@ Show the main CLI:
 docker run --rm simcortex:2.0.0 simcortex --help
 ```
 
-Show stage help:
+Show help for all four public stages:
 
 ```bash
+docker run --rm simcortex:2.0.0 simcortex fs-to-mni --help
 docker run --rm simcortex:2.0.0 simcortex seg --help
 docker run --rm simcortex:2.0.0 simcortex initsurf --help
 docker run --rm simcortex:2.0.0 simcortex deform --help
 ```
 
-Verify key Python packages:
+Verify important Python packages:
 
 ```bash
 docker run --rm simcortex:2.0.0 \
-  python -c "import torch, pytorch3d, pymeshlab; print(torch.__version__)"
+  python -c "import ants, torch, pytorch3d, pymeshlab, simcortex; print(torch.__version__)"
 ```
 
 Verify GPU visibility:
@@ -121,21 +147,35 @@ docker run --rm --gpus all simcortex:2.0.0 \
   python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.device_count())"
 ```
 
+You can also run the repository smoke test:
+
+```bash
+bash scripts/docker_smoke_test.sh simcortex:2.0.0
+```
+
 ---
 
 ## Recommended Runtime Pattern
 
-On shared Linux systems, Docker writes files as `root` by default unless told otherwise. For ordinary SimCortex runs, the safest pattern is to run as the host user and mount data and outputs explicitly.
-
-Recommended runtime block:
+For shared systems, prefer:
 
 ```bash
---user $(id -u):$(id -g) \
--e HOME=/tmp \
--e UMASK=002
+docker run --rm \
+  --user $(id -u):$(id -g) \
+  -e HOME=/tmp \
+  -e UMASK=002 \
+  [mounts] \
+  simcortex:2.0.0 \
+  <command>
 ```
 
-Recommended day-to-day command pattern:
+For GPU stages, add:
+
+```bash
+--gpus all
+```
+
+For example:
 
 ```bash
 docker run --rm --gpus all \
@@ -148,67 +188,58 @@ docker run --rm --gpus all \
   simcortex --help
 ```
 
-This gives you:
-
-- host-owned output files instead of root-owned files
-- explicit mounted paths for datasets and run outputs
-- GPU access when Docker and the NVIDIA runtime are configured correctly
-
-If you do not need GPU access, omit `--gpus all`.
+Using the host UID/GID prevents container-created output files from being owned
+by root.
 
 ---
 
 ## Mounting Datasets and Outputs
 
-Docker containers do not automatically see host files. Mount them explicitly with `-v`:
+A practical host layout is:
 
-```bash
--v /host/path:/container/path
+```text
+/home/<user>/datasets
+/home/<user>/runs
+/home/<user>/checkpoints
+/home/<user>/templates
 ```
 
-A simple and maintainable layout is:
+Mount them into predictable container paths:
 
 ```bash
--v /home/<user>/datasets:/data \
+-v /home/<user>/datasets:/data
 -v /home/<user>/runs:/runs
+-v /home/<user>/checkpoints:/checkpoints:ro
+-v /home/<user>/templates:/templates:ro
 ```
 
-Inside the container:
-
-- `/data` points to datasets and derivatives
-- `/runs` points to experiment outputs and logs
-
-Example host layout:
+For a multi-stage workflow, derivative roots typically appear under the mounted
+dataset tree as:
 
 ```text
-/home/<user>/datasets/
-  hcpya-u100/
-  oasis-1/
-  splits/
-/home/<user>/runs/
-  seg/
-  initsurf/
-  deform/
+/data/<dataset>/derivatives/sc-preproc
+/data/<dataset>/derivatives/sc-seg
+/data/<dataset>/derivatives/sc-initsurf
+/data/<dataset>/derivatives/sc-deform
 ```
 
-Example mounted layout inside the container:
+Run directories can remain separate:
 
 ```text
-/data/hcpya-u100
-/data/oasis-1
-/data/splits
 /runs/seg
 /runs/initsurf
 /runs/deform
 ```
 
-Keeping datasets and run outputs mounted separately makes commands easier to read and reduces mistakes.
+Keeping datasets and experiment outputs separate makes commands easier to read
+and reduces accidental overwrites.
 
 ---
 
 ## Hydra Configuration from Docker
 
-SimCortex uses Hydra configs. You can pass overrides directly through the CLI inside `docker run`.
+SimCortex uses Hydra configurations for Segmentation, InitSurf, and Deform.
+Overrides can be passed directly through the CLI inside `docker run`.
 
 General pattern:
 
@@ -220,7 +251,7 @@ docker run --rm [docker-options] simcortex:2.0.0 \
 Example:
 
 ```bash
-docker run --rm --gpus all \
+docker run --rm \
   --user $(id -u):$(id -g) \
   -e HOME=/tmp \
   -e UMASK=002 \
@@ -230,59 +261,62 @@ docker run --rm --gpus all \
   simcortex initsurf generate \
   dataset.split_file=/data/splits/dataset_split.csv \
   dataset.split_name=all \
-  dataset.roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-preproc-0.1 \
-  dataset.seg_roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-seg-0.1 \
-  outputs.out_roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-initsurf-0.1 \
+  dataset.roots.HCP_YA=/data/hcpya-u100/derivatives/sc-preproc \
+  dataset.seg_roots.HCP_YA=/data/hcpya-u100/derivatives/sc-seg \
+  outputs.out_roots.HCP_YA=/data/hcpya-u100/derivatives/sc-initsurf \
   outputs.log_dir=/runs/initsurf/exp01/logs
 ```
-
-This is usually the simplest approach for quick tests and one-off runs.
 
 ---
 
 ## Inspect Packaged Config Files
 
-If you want to inspect the packaged Hydra configs inside the image, you can locate the installed package and print a config file directly.
-
-Print the package location:
+Print the installed package location:
 
 ```bash
 docker run --rm simcortex:2.0.0 \
-  python -c "import simcortexpp, pathlib; print(pathlib.Path(simcortexpp.__file__).resolve().parent)"
+  python -c "import simcortex, pathlib; print(pathlib.Path(simcortex.__file__).resolve().parent)"
 ```
 
-Print an InitSurf config to stdout:
+Print an InitSurf config:
 
 ```bash
 docker run --rm simcortex:2.0.0 \
-  python -c "import simcortexpp, pathlib; p=pathlib.Path(simcortexpp.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; print(p.read_text())"
+  python -c "import simcortex, pathlib; p=pathlib.Path(simcortex.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; print(p.read_text())"
 ```
 
-Print a Deform train config to stdout:
+Print a Deform training config:
 
 ```bash
 docker run --rm simcortex:2.0.0 \
-  python -c "import simcortexpp, pathlib; p=pathlib.Path(simcortexpp.__file__).resolve().parent/'configs'/'deform'/'train.yaml'; print(p.read_text())"
+  python -c "import simcortex, pathlib; p=pathlib.Path(simcortex.__file__).resolve().parent/'configs'/'deform'/'train.yaml'; print(p.read_text())"
 ```
 
 Save a packaged config to the host:
 
 ```bash
-mkdir -p /tmp/scpp_cfg
+mkdir -p /tmp/simcortex_cfg
 
 docker run --rm \
-  -v /tmp/scpp_cfg:/out \
+  -v /tmp/simcortex_cfg:/out \
   simcortex:2.0.0 \
-  python -c "import simcortexpp, pathlib; p=pathlib.Path(simcortexpp.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; open('/out/generate.yaml','w').write(p.read_text())"
+  python -c "import simcortex, pathlib; p=pathlib.Path(simcortex.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; open('/out/generate.yaml','w').write(p.read_text())"
 ```
 
-After that, edit `/tmp/scpp_cfg/generate.yaml` on the host.
+Then edit:
+
+```text
+/tmp/simcortex_cfg/generate.yaml
+```
+
+on the host.
 
 ---
 
 ## Use Your Own YAML Config
 
-If a stage supports a `user_config` pattern, mount your custom YAML file and pass it explicitly.
+If a stage supports a `user_config` pattern, mount the custom YAML file and pass
+it explicitly.
 
 Example:
 
@@ -293,18 +327,47 @@ docker run --rm --gpus all \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/runs:/runs \
-  -v /home/<user>/myconfigs:/cfg \
+  -v /home/<user>/myconfigs:/cfg:ro \
   simcortex:2.0.0 \
   simcortex deform train user_config=/cfg/train.yaml
 ```
 
-If your stage does not use a `user_config` field, override individual values directly on the CLI instead.
+If the stage does not use a `user_config` field, override individual values
+directly on the CLI.
 
 ---
 
 ## Examples by Stage
 
-> Note: In the current recommended setup, **Stage 1 (FreeSurfer to MNI152 preprocessing)** is run outside the main Docker image. The examples below therefore start from **Stage 2** and assume preprocessing outputs already exist under `scpp-preproc-*`.
+The examples below use the same four-stage workflow documented in the repository
+root `README.md`.
+
+### Stage 1 — Preprocessing
+
+Stage 1 reads an existing FreeSurfer derivatives tree and an external MNI152
+reference image. The MNI template is not bundled with SimCortex, so mount it
+explicitly.
+
+```bash
+docker run --rm \
+  --user $(id -u):$(id -g) \
+  -e HOME=/tmp \
+  -e UMASK=002 \
+  -v /home/<user>/datasets:/data \
+  -v /path/to/MNI152_T1_1mm.nii.gz:/templates/MNI152_T1_1mm.nii.gz:ro \
+  simcortex:2.0.0 \
+  simcortex fs-to-mni \
+  --freesurfer-root /data/<dataset>/derivatives/freesurfer-7.4.1 \
+  --out-deriv-root /data/<dataset>/derivatives/sc-preproc \
+  --mni-template /templates/MNI152_T1_1mm.nii.gz \
+  --transform-type affine \
+  --n4 \
+  --with-aparc-aseg \
+  --with-filled
+```
+
+The MNI reference used for exact reproduction of previously generated SimCortex
+derivatives must match the reference documented in the root README.
 
 ### Stage 2 — Segmentation train
 
@@ -317,7 +380,7 @@ docker run --rm --gpus all \
   -v /home/<user>/runs:/runs \
   simcortex:2.0.0 \
   simcortex seg train \
-  dataset.path=/data/<dataset>/derivatives/scpp-preproc-0.1 \
+  dataset.path=/data/<dataset>/derivatives/sc-preproc \
   dataset.split_file=/data/splits/<dataset>_split.csv \
   outputs.root=/runs/seg/exp01
 ```
@@ -330,19 +393,20 @@ docker run --rm --gpus all \
   -e HOME=/tmp \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
+  -v /home/<user>/checkpoints:/checkpoints:ro \
   simcortex:2.0.0 \
   simcortex seg infer \
-  dataset.path=/data/<dataset>/derivatives/scpp-preproc-0.1 \
+  dataset.path=/data/<dataset>/derivatives/sc-preproc \
   dataset.split_file=/data/splits/<dataset>_split.csv \
   dataset.split_name=test \
-  model.ckpt_path=/data/checkpoints/seg_best_dice.pt \
-  outputs.out_root=/data/<dataset>/derivatives/scpp-seg-0.1
+  model.ckpt_path=/checkpoints/seg_best_dice.pt \
+  outputs.out_root=/data/<dataset>/derivatives/sc-seg
 ```
 
 ### Stage 3 — InitSurf
 
 ```bash
-docker run --rm --gpus all \
+docker run --rm \
   --user $(id -u):$(id -g) \
   -e HOME=/tmp \
   -e UMASK=002 \
@@ -352,9 +416,9 @@ docker run --rm --gpus all \
   simcortex initsurf generate \
   dataset.split_file=/data/splits/dataset_split.csv \
   dataset.split_name=all \
-  dataset.roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-preproc-0.1 \
-  dataset.seg_roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-seg-0.1 \
-  outputs.out_roots.HCP_YA=/data/hcpya-u100/derivatives/scpp-initsurf-0.1 \
+  dataset.roots.HCP_YA=/data/hcpya-u100/derivatives/sc-preproc \
+  dataset.seg_roots.HCP_YA=/data/hcpya-u100/derivatives/sc-seg \
+  outputs.out_roots.HCP_YA=/data/hcpya-u100/derivatives/sc-initsurf \
   outputs.log_dir=/runs/initsurf/exp01/logs
 ```
 
@@ -372,7 +436,21 @@ docker run --rm --gpus all \
   outputs.root=/runs/deform/exp01
 ```
 
-### Stage 4 — Deformation eval
+### Stage 4 — Deformation inference
+
+```bash
+docker run --rm --gpus all \
+  --user $(id -u):$(id -g) \
+  -e HOME=/tmp \
+  -e UMASK=002 \
+  -v /home/<user>/datasets:/data \
+  -v /home/<user>/checkpoints:/checkpoints:ro \
+  simcortex:2.0.0 \
+  simcortex deform infer \
+  model.ckpt_path=/checkpoints/deform_best_rmse.pth
+```
+
+### Stage 4 — Deformation evaluation
 
 ```bash
 docker run --rm --gpus all \
@@ -385,108 +463,124 @@ docker run --rm --gpus all \
   simcortex deform eval
 ```
 
+For the full set of stage-specific Hydra overrides, use the repository root
+README and the packaged configuration files.
+
 ---
 
 ## GPU Support
 
-If Docker and the NVIDIA runtime are configured correctly on the host, enable GPU access with:
+If Docker and the NVIDIA Container Toolkit are configured correctly on the host,
+enable GPU access with:
 
 ```bash
 --gpus all
 ```
 
-First validate the host Docker GPU setup:
-
-```bash
-docker run --rm --gpus all \
-  nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 \
-  nvidia-smi
-```
-
-Then validate GPU access inside the SimCortex image:
+Check visibility with:
 
 ```bash
 docker run --rm --gpus all simcortex:2.0.0 \
   python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.device_count())"
 ```
 
-If the CUDA test container fails, the problem is with the host Docker / NVIDIA runtime setup rather than SimCortex.
+Segmentation and Deform normally use GPU acceleration. Stage 1 preprocessing and
+InitSurf do not require a GPU.
+
+If the CUDA test fails, first verify the host Docker / NVIDIA runtime
+configuration independently of SimCortex.
 
 ---
 
 ## Shared Server and HPC Notes
 
-On some managed Linux systems, the Docker daemon cannot bind-mount arbitrary paths such as:
+On shared systems:
 
-```text
-/project/...
+- run containers with the host UID/GID when writing to shared project storage;
+- set a writable `HOME`, for example `-e HOME=/tmp`;
+- mount datasets and run directories explicitly;
+- use read-only mounts for immutable checkpoints and templates where practical;
+- avoid writing large intermediate files into the container filesystem;
+- request GPUs through the site's scheduler before using `--gpus all`;
+- use versioned image tags for reproducible runs.
+
+Example permission-safe invocation:
+
+```bash
+docker run --rm \
+  --user $(id -u):$(id -g) \
+  -e HOME=/tmp \
+  -e UMASK=002 \
+  -v /project/data:/data \
+  -v /project/runs:/runs \
+  simcortex:2.0.0 \
+  simcortex --help
 ```
-
-Even if the path exists for the user, Docker may return an error like:
-
-```text
-error while creating mount source path ... permission denied
-```
-
-This is typically a host-side Docker policy issue, not an SimCortex issue.
-
-Practical workarounds:
-
-- mount from `$HOME/...`
-- mount from `/tmp/...`
-- use another host path explicitly allowed by your Docker configuration
-- create a symlink, copy, or temporary view under an allowed path before running Docker
 
 ---
 
 ## Docker Hub Publication
 
-Tag the local image:
+Build the versioned image:
+
+```bash
+docker build -f docker/Dockerfile -t simcortex:2.0.0 .
+```
+
+Tag it for Docker Hub:
 
 ```bash
 docker tag simcortex:2.0.0 kavehmoradkhani/simcortex:2.0.0
 ```
 
-Push it:
+Log in:
+
+```bash
+docker login
+```
+
+Push:
 
 ```bash
 docker push kavehmoradkhani/simcortex:2.0.0
 ```
 
-Then users can pull it with:
+Optionally publish `latest` only after validating the versioned image:
 
 ```bash
-docker pull kavehmoradkhani/simcortex:2.0.0
+docker tag simcortex:2.0.0 kavehmoradkhani/simcortex:latest
+docker push kavehmoradkhani/simcortex:latest
 ```
 
-If you later publish a `latest` tag, keep the versioned tag as well.
+The versioned tag should remain the primary reproducibility reference.
 
 ---
 
 ## Apptainer / Singularity Notes
 
-Many neuroimaging and HPC systems prefer **Apptainer / Singularity** rather than Docker. A common pattern is to convert the Docker image into a `.sif` file.
+On HPC systems where Docker is unavailable, the published Docker image can be
+converted or pulled with Apptainer/Singularity according to local cluster
+policy.
 
-Build from the local Docker image:
-
-```bash
-apptainer build simcortex_2.0.0.sif docker-daemon://simcortex:2.0.0
-```
-
-Build from Docker Hub after publication:
+Example:
 
 ```bash
-apptainer build simcortex_2.0.0.sif docker://kavehmoradkhani/simcortex:2.0.0
+apptainer pull simcortex_2.0.0.sif \
+  docker://kavehmoradkhani/simcortex:2.0.0
 ```
 
-After conversion, re-check:
+Run CLI help:
 
-- CLI behavior
-- writable output directories
-- environment variables
-- GPU access on the target system
+```bash
+apptainer exec simcortex_2.0.0.sif simcortex --help
+```
 
-Apptainer runtime behavior is often close to Docker, but it is not always identical.
+For GPU stages:
 
----
+```bash
+apptainer exec --nv simcortex_2.0.0.sif simcortex seg --help
+```
+
+Bind datasets, outputs, checkpoints, and the MNI template using the mount syntax
+required by the local HPC environment.
 
