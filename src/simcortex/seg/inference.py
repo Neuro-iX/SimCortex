@@ -20,6 +20,7 @@ from torch.utils.data import ConcatDataset, DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
+from simcortex import __version__
 from simcortex.seg.data.dataloader import PredictSegDataset
 from simcortex.seg.models.unet import Unet
 
@@ -182,15 +183,6 @@ def load_model_from_checkpoint(cfg: DictConfig, device: torch.device) -> torch.n
 # -----------------------------------------------------------------------------
 # BIDS derivative helpers
 # -----------------------------------------------------------------------------
-def _get_pkg_version(pkg_name: str) -> str:
-    try:
-        import importlib.metadata as importlib_metadata
-
-        return importlib_metadata.version(pkg_name)
-    except Exception:
-        return "0.0.0"
-
-
 def _write_dataset_description(deriv_root: Path, name: str, version: str, overwrite: bool = False) -> None:
     """Create/update dataset_description.json for the segmentation derivative."""
     deriv_root.mkdir(parents=True, exist_ok=True)
@@ -450,7 +442,7 @@ def main(cfg: DictConfig) -> None:
     space = str(OmegaConf.select(cfg, "dataset.space", default="MNI152"))
 
     # Prepare BIDS derivative descriptions.
-    version = _get_pkg_version("simcortex")
+    version = __version__
     if roots_map is not None:
         for ds_name in roots_map.keys():
             out_root = _resolve_out_root(cfg, ds_name)
