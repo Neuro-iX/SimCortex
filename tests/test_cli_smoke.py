@@ -45,6 +45,35 @@ def test_top_level_help_smoke():
     assert "deform" in result.output
 
 
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--version",
+        "-V",
+    ],
+)
+def test_top_level_version_option(flag):
+    """Both public version flags must report the package version and exit."""
+    result = runner.invoke(
+        cli.app,
+        [flag],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"simcortex {cli.__version__}\n"
+
+
+def test_top_level_no_arguments_preserves_missing_command_behavior():
+    """Running the root CLI without a command must remain an error."""
+    result = runner.invoke(
+        cli.app,
+        [],
+    )
+
+    assert result.exit_code == 2
+    assert "Missing command." in result.output
+
+
 def test_preproc_is_not_a_public_top_level_command():
     """Stage 1 is intentionally named fs-to-mni, not preproc."""
     command = get_command(cli.app)
