@@ -51,6 +51,33 @@ def test_public_package_version_matches_distribution_metadata():
     assert simcortex.__version__ == metadata.version("simcortex")
 
 
+def test_initsurf_extra_declares_required_runtime_dependencies():
+    """The InitSurf extra must contain all direct Stage 3 runtime dependencies."""
+    text = PYPROJECT.read_text(
+        encoding="utf-8"
+    )
+
+    match = re.search(
+        r'(?ms)^initsurf\s*=\s*\[(.*?)^\]\s*$',
+        text,
+    )
+
+    assert match is not None
+
+    requirements = re.findall(
+        r'"([^"]+)"',
+        match.group(1),
+    )
+
+    assert requirements == [
+        "torch>=2.0",
+        "scipy>=1.10",
+        "scikit-image>=0.21",
+        "numba>=0.64",
+        "python-fcl",
+    ]
+
+
 def test_required_resources_are_available_via_importlib():
     """All runtime configuration and topology resources must be discoverable."""
     package_root = resources.files("simcortex")
