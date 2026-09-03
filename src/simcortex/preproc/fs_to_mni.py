@@ -36,6 +36,8 @@ import numpy as np
 import typer
 from nibabel.freesurfer.io import read_geometry
 
+from simcortex import __version__
+
 def _require_antspy() -> Any:
     """Import ANTsPy only when Stage 1 functionality is executed."""
     try:
@@ -49,7 +51,6 @@ def _require_antspy() -> Any:
     return ants
 
 APP_NAME = "SimCortex-Preproc-ANTsPy"
-__version__ = "2.0.0"
 PIPELINE_NAME = "sc-preproc"
 RAS_TO_LPS_4 = np.diag([-1.0, -1.0, 1.0, 1.0]).astype(np.float64)
 
