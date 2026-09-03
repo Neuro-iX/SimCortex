@@ -15,4 +15,3 @@ docs
 outputResult.nii
 outputResult.nii.gz
 pipeline.log
-docker/requirements.freeze.txt
