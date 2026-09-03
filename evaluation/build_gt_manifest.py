@@ -139,6 +139,11 @@ def parse_args() -> argparse.Namespace:
         default=560,
     )
     parser.add_argument(
+        "--expected-cases-per-dataset",
+        type=int,
+        default=40,
+    )
+    parser.add_argument(
         "--expected-surfaces-per-case",
         type=int,
         default=4,
@@ -316,7 +321,11 @@ def output_path_for(row: pd.Series, surface: str, gt_out_root: Path) -> Path:
     return Path(gt_out_root) / dataset / case_id / fname
 
 
-def ensure_case_manifest_valid(cases: pd.DataFrame, expected_cases: int) -> List[str]:
+def ensure_case_manifest_valid(
+    cases: pd.DataFrame,
+    expected_cases: int,
+    expected_cases_per_dataset: int,
+) -> List[str]:
     problems: List[str] = []
     missing_cols = sorted(set(REQUIRED_CASE_COLUMNS) - set(cases.columns))
     if missing_cols:
@@ -334,9 +343,17 @@ def ensure_case_manifest_valid(cases: pd.DataFrame, expected_cases: int) -> List
         problems.append(f"{len(dup)} duplicate dataset/case_id rows in case manifest")
 
     n_by_ds = cases.groupby("dataset")["case_id"].nunique().sort_index()
-    if not n_by_ds.empty and not n_by_ds.eq(40).all():
-        bad = {str(k): int(v) for k, v in n_by_ds[~n_by_ds.eq(40)].to_dict().items()}
-        problems.append(f"Datasets with case count != 40: {bad}")
+    if not n_by_ds.empty and not n_by_ds.eq(expected_cases_per_dataset).all():
+        bad = {
+            str(k): int(v)
+            for k, v in n_by_ds[
+                ~n_by_ds.eq(expected_cases_per_dataset)
+            ].to_dict().items()
+        }
+        problems.append(
+            "Datasets with case count != "
+            f"{expected_cases_per_dataset}: {bad}"
+        )
 
     return problems
 
@@ -459,7 +476,11 @@ def export_gt_manifest(args: argparse.Namespace) -> Tuple[pd.DataFrame, Dict[str
         raise FileNotFoundError(f"Missing case manifest: {case_manifest}")
 
     cases = pd.read_csv(case_manifest, sep="\t", low_memory=False)
-    manifest_problems = ensure_case_manifest_valid(cases, expected_cases=int(args.expected_cases))
+    manifest_problems = ensure_case_manifest_valid(
+        cases,
+        expected_cases=int(args.expected_cases),
+        expected_cases_per_dataset=int(args.expected_cases_per_dataset),
+    )
     if manifest_problems:
         for problem in manifest_problems:
             LOG.error(problem)
@@ -557,9 +578,21 @@ def build_qc_report(df: pd.DataFrame, cases: pd.DataFrame, args: argparse.Namesp
             if col in ["n_vertices", "n_faces", "bbox_diag"] and (vals <= 0).any():
                 problems.append(f"Non-positive values in OK rows for {col}")
 
-        if not cases_by_dataset.empty and not cases_by_dataset.eq(40).all():
-            bad = {str(k): int(v) for k, v in cases_by_dataset[~cases_by_dataset.eq(40)].to_dict().items()}
-            problems.append(f"GT OK case counts by dataset are not all 40: {bad}")
+        expected_cases_per_dataset = int(args.expected_cases_per_dataset)
+        if (
+            not cases_by_dataset.empty
+            and not cases_by_dataset.eq(expected_cases_per_dataset).all()
+        ):
+            bad = {
+                str(k): int(v)
+                for k, v in cases_by_dataset[
+                    ~cases_by_dataset.eq(expected_cases_per_dataset)
+                ].to_dict().items()
+            }
+            problems.append(
+                "GT OK case counts by dataset are not all "
+                f"{expected_cases_per_dataset}: {bad}"
+            )
 
     non_ok = df[df["status"] != "OK"].copy() if "status" in df.columns else df.copy()
     if len(non_ok):
@@ -577,6 +610,9 @@ def build_qc_report(df: pd.DataFrame, cases: pd.DataFrame, args: argparse.Namesp
         "n_ok_rows": int(len(ok)),
         "n_non_ok_rows": int(len(non_ok)),
         "expected_rows": int(expected_rows),
+        "expected_cases": int(args.expected_cases),
+        "expected_cases_per_dataset": int(args.expected_cases_per_dataset),
+        "expected_surfaces_per_case": int(args.expected_surfaces_per_case),
         "status_counts": {str(k): int(v) for k, v in status_counts.items()},
         "rows_by_surface": {str(k): int(v) for k, v in rows_by_surface.to_dict().items()},
         "cases_by_dataset": {str(k): int(v) for k, v in cases_by_dataset.to_dict().items()},
