@@ -198,6 +198,25 @@ def test_manifest_includes_required_docker_distribution_files():
     assert expected <= lines
 
 
+def test_stale_dependency_freeze_is_absent():
+    """The obsolete local-environment freeze must not return to release packaging."""
+    freeze = PROJECT_ROOT / "docker" / "requirements.freeze.txt"
+
+    assert not freeze.exists()
+
+    manifest_text = MANIFEST.read_text(
+        encoding="utf-8"
+    )
+    dockerignore_text = (
+        PROJECT_ROOT / ".dockerignore"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert "requirements.freeze.txt" not in manifest_text
+    assert "requirements.freeze.txt" not in dockerignore_text
+
+
 def test_packaging_rules_do_not_include_generated_artifacts():
     """Packaging declarations must not intentionally ship local build/cache files."""
     text = (
