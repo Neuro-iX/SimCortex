@@ -257,6 +257,7 @@ run_cmd \
     "${SCRIPT_DIR}/build_gt_manifest.py" \
     --eval-root "${EVAL_ROOT}" \
     --expected-cases "${EXPECTED_CASES}" \
+    --expected-cases-per-dataset "${EXPECTED_CASES_PER_DATASET}" \
     --expected-surfaces-per-case "${EXPECTED_SURFACES_PER_CASE}"
 
 
