@@ -18,6 +18,23 @@ EXPECTED_CASES_PER_DATASET=40
 EXPECTED_N_DATASETS=14
 EXPECTED_SURFACES_PER_CASE=4
 
+EXPECTED_DATASETS=(
+    cnp
+    ds000115
+    ds000144
+    ds001486
+    ds001748
+    ds002424
+    ds002862
+    ds002886
+    ds003499
+    ds003568
+    ds003763
+    ds005234
+    ds006067
+    hcp_oasis
+)
+
 OVERWRITE=0
 STRICT=0
 DRY_RUN=0
@@ -62,6 +79,10 @@ Options:
   --expected-n-datasets N
       Expected number of datasets.
       Default: 14
+
+  --expected-datasets NAME [NAME ...]
+      Expected dataset keys.
+      Default: the historical 14-dataset sample40 cohort.
 
   --overwrite
       Allow stages that protect outputs to replace existing results.
@@ -137,6 +158,15 @@ while [[ $# -gt 0 ]]; do
             EXPECTED_N_DATASETS="$2"
             shift 2
             ;;
+        --expected-datasets)
+            shift
+            EXPECTED_DATASETS=()
+            while [[ $# -gt 0 && "$1" != --* ]]; do
+                EXPECTED_DATASETS+=("$1")
+                shift
+            done
+            [[ "${#EXPECTED_DATASETS[@]}" -gt 0 ]]                 || die "--expected-datasets requires at least one dataset name"
+            ;;
         --overwrite)
             OVERWRITE=1
             shift
@@ -173,6 +203,9 @@ done
 [[ "${EXPECTED_N_DATASETS}" =~ ^[1-9][0-9]*$ ]] \
     || die "--expected-n-datasets must be a positive integer"
 
+[[ "${#EXPECTED_DATASETS[@]}" -eq "${EXPECTED_N_DATASETS}" ]] \
+    || die "--expected-n-datasets (${EXPECTED_N_DATASETS}) must match the number of --expected-datasets entries (${#EXPECTED_DATASETS[@]})"
+
 
 echo "=== SimCortex evaluation ==="
 echo "repo_root=${REPO_ROOT}"
@@ -184,6 +217,7 @@ echo "eval_set=${EVAL_SET}"
 echo "expected_cases=${EXPECTED_CASES}"
 echo "expected_cases_per_dataset=${EXPECTED_CASES_PER_DATASET}"
 echo "expected_n_datasets=${EXPECTED_N_DATASETS}"
+echo "expected_datasets=${EXPECTED_DATASETS[*]}"
 echo "overwrite=${OVERWRITE}"
 echo "strict=${STRICT}"
 echo "dry_run=${DRY_RUN}"
@@ -198,6 +232,7 @@ cmd=(
     "${SCRIPT_DIR}/build_case_manifest.py"
     --eval-root "${EVAL_ROOT}"
     --sample-root "${SAMPLE_ROOT}"
+    --expected-datasets "${EXPECTED_DATASETS[@]}"
     --expected-cases-per-dataset "${EXPECTED_CASES_PER_DATASET}"
     --expected-total-cases "${EXPECTED_CASES}"
 )
