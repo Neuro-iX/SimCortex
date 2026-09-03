@@ -51,6 +51,44 @@ def test_public_package_version_matches_distribution_metadata():
     assert simcortex.__version__ == metadata.version("simcortex")
 
 
+def test_stage_specific_extras_are_declared():
+    """Stage-specific extras must retain their release dependency contracts."""
+    text = PYPROJECT.read_text(
+        encoding="utf-8"
+    )
+
+    expected = {
+        "preproc": [
+            "antspyx>=0.6.1",
+        ],
+        "seg": [
+            "monai>=1.3",
+        ],
+        "deform-metrics": [
+            "python-fcl",
+            "pymeshlab",
+        ],
+        "torch": [
+            "torch>=2.0",
+        ],
+    }
+
+    for extra, requirements_expected in expected.items():
+        match = re.search(
+            rf'(?ms)^{re.escape(extra)}\s*=\s*\[(.*?)^\]\s*$',
+            text,
+        )
+
+        assert match is not None, extra
+
+        requirements = re.findall(
+            r'"([^"]+)"',
+            match.group(1),
+        )
+
+        assert requirements == requirements_expected, extra
+
+
 def test_initsurf_extra_declares_required_runtime_dependencies():
     """The InitSurf extra must contain all direct Stage 3 runtime dependencies."""
     text = PYPROJECT.read_text(
