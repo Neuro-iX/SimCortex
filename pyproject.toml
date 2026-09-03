@@ -52,6 +52,10 @@ seg = [
 ]
 
 initsurf = [
+  "torch>=2.0",
+  "scipy>=1.10",
+  "scikit-image>=0.21",
+  "numba>=0.64",
   "python-fcl",
 ]
 
