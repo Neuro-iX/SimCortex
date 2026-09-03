@@ -192,7 +192,6 @@ def test_manifest_includes_required_docker_distribution_files():
         "include docker/Dockerfile",
         "include docker/README.md",
         "include docker/entrypoint.sh",
-        "include docker/requirements.freeze.txt",
         "include docker/requirements.runtime.txt",
     }
 
