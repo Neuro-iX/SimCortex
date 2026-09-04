@@ -9,6 +9,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 README_PATH = REPO_ROOT / "README.md"
+DEFORM_INFERENCE_CONFIG_PATH = (
+    REPO_ROOT / "src/simcortex/configs/deform/inference.yaml"
+)
 
 RELEASE_CHECKPOINTS = (
     (
@@ -35,3 +38,17 @@ def test_release_checkpoint_identity_is_documented_once(
 
     assert readme.count(f"Filename: {filename}") == 1
     assert readme.count(sha256) == 1
+
+def test_deformation_inference_config_uses_release_checkpoint() -> None:
+    """The shipped inference config must point to the validated release weights."""
+    config_text = DEFORM_INFERENCE_CONFIG_PATH.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        config_text.count(
+            "ckpt_path: /path/to/deform_best_rmse.pth"
+        )
+        == 1
+    )
+    assert "deform_best_model.pth" not in config_text
