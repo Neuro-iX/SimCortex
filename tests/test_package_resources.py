@@ -51,6 +51,45 @@ def test_public_package_version_matches_distribution_metadata():
     assert simcortex.__version__ == metadata.version("simcortex")
 
 
+def test_pyproject_public_metadata_contract():
+    """Public package metadata must retain only validated release claims."""
+    text = PYPROJECT.read_text(
+        encoding="utf-8"
+    )
+
+    assert re.search(
+        r'(?m)^requires-python\s*=\s*">=3\.10"\s*$',
+        text,
+    )
+    assert re.search(
+        r'(?m)^license\s*=\s*"Apache-2\.0"\s*$',
+        text,
+    )
+
+    match = re.search(
+        r'(?ms)^classifiers\s*=\s*\[(.*?)^\]\s*$',
+        text,
+    )
+
+    assert match is not None
+
+    classifiers = re.findall(
+        r'"([^"]+)"',
+        match.group(1),
+    )
+
+    assert classifiers == [
+        "Environment :: Console",
+        "Intended Audience :: Science/Research",
+        "Operating System :: POSIX :: Linux",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3 :: Only",
+        "Programming Language :: Python :: 3.10",
+        "Topic :: Scientific/Engineering",
+        "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    ]
+
+
 def test_stage_specific_extras_are_declared():
     """Stage-specific extras must retain their release dependency contracts."""
     text = PYPROJECT.read_text(
