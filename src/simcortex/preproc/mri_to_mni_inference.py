@@ -21,6 +21,8 @@ from typing import Any, Optional
 import nibabel as nib
 import numpy as np
 
+from simcortex.preproc.mni_geometry import validate_mni152_template
+
 
 def _require_antspy() -> Any:
     """Import ANTsPy only when preprocessing is executed."""
@@ -472,6 +474,8 @@ def preprocess_one_t1w_to_mni(
             "surface_xfm_json": str(xfm_out / f"{subject}_{session}_desc-surface_xfm.json"),
         })
         return row
+
+    validate_mni152_template(mni_path)
 
     log.info("Subject/session: %s / %s", subject, session)
     log.info("Input T1w: %s", t1w_path)
