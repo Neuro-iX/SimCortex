@@ -400,6 +400,17 @@ For each subject under `sc-preproc`:
 - `..._space-MNI152_desc-aparc+aseg_dseg.nii.gz`
 - `..._space-MNI152_desc-filled_T1w.nii.gz`
 
+### T1w intensity normalization
+
+Before the T1w image is passed to the segmentation network, it is converted to
+`float32` and non-finite values are replaced with zero. The 99th percentile is
+computed from strictly positive voxels (`T1w > 0`); intensities are then clipped
+to `[0, p99]` and divided by `p99`. For standard MNI-space T1w inputs, this keeps
+the zero-valued background at zero and scales foreground intensities to `[0, 1]`.
+The same normalization routine is used during segmentation training and
+inference. If no valid positive foreground percentile is available, the
+sanitized volume is returned without percentile scaling.
+
 ### Output prediction naming
 
 Segmentation predictions are written under `sc-seg` as:
@@ -585,6 +596,29 @@ This stage deforms the InitSurf meshes toward the MNI-aligned FreeSurfer target 
   - initial surfaces
   - ribbon probability volumes
 - split CSV
+
+### Deformation input normalization
+
+The deformation stage normalizes the MRI and ribbon-probability channels
+separately. For the MRI channel, the mean and standard deviation are computed
+from nonzero voxels when at least 100 nonzero voxels are available; otherwise,
+they are computed from the full volume. The normalized MRI is
+
+```text
+(T1w - mean) / max(std, 1e-6)
+```
+
+and is stored as `float32`. This same MRI normalization is used for deformation
+training and inference, before the center crop/pad step.
+
+The ribbon-probability channel is **not** z-score normalized. Non-finite values
+are replaced, optional values below `prob_clip_min` are set to zero, values are
+clipped to `[0, prob_clip_max]`, and `prob_gamma` is applied when it differs from
+1.0. With the shipped deformation defaults, `prob_clip_min=0.0`,
+`prob_clip_max=1.0`, and `prob_gamma=1.0`.
+
+These stage-specific normalization steps are separate from the optional N4
+bias-field correction performed during Stage 1 preprocessing.
 
 ### Outputs
 
