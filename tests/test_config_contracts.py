@@ -1,5 +1,6 @@
 """Regression tests for finalized SimCortex configuration contracts."""
 
+import re
 from pathlib import Path
 
 from omegaconf import OmegaConf
@@ -36,7 +37,7 @@ def load(path):
 def test_public_configs_contain_no_private_or_legacy_paths():
     """Release configs must not expose private cluster or stale derivative names."""
     forbidden = [
-        "/project/hippocampus/common/kaveh",
+        "/project/",
         "sc-preproc-0.1",
         "sc-preproc-0.2",
         "sc-seg-0.1",
@@ -45,20 +46,18 @@ def test_public_configs_contain_no_private_or_legacy_paths():
         "sc-initsurf-0.2",
         "sc-deform-0.1",
         "sc-deform-0.2",
-        "simcortex-preproc",
-        "simcortex-seg",
-        "simcortex-initsurf",
-        "simcortex-deform",
-        "scpp-preproc",
-        "scpp-seg",
-        "scpp-initsurf",
-        "scpp-deform",
         "exp13",
         "exp33",
         "Ablation",
         "3Losses",
         "oneInput",
     ]
+
+    unapproved_derivative = re.compile(
+        r"\\b(?!sc-)[a-z][a-z0-9]*-"
+        r"(?:preproc|seg|initsurf|deform)\\b",
+        flags=re.IGNORECASE,
+    )
 
     for path in PUBLIC_CONFIGS:
         text = path.read_text()
@@ -67,6 +66,12 @@ def test_public_configs_contain_no_private_or_legacy_paths():
             assert value not in text, (
                 f"{value!r} found in {path}"
             )
+
+        match = unapproved_derivative.search(text)
+        assert match is None, (
+            f"unapproved derivative namespace "
+            f"{match.group(0)!r} found in {path}"
+        )
 
 
 def test_public_configs_use_placeholder_paths():
