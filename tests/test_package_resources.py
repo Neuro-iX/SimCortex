@@ -193,6 +193,8 @@ def test_manifest_includes_required_docker_distribution_files():
         "include docker/README.md",
         "include docker/entrypoint.sh",
         "include docker/requirements.runtime.txt",
+        "include scripts/run_pipeline.py",
+        "include scripts/docker_smoke_test.sh",
     }
 
     assert expected <= lines
