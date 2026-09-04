@@ -226,6 +226,24 @@ def out_surface_path(out_root: str, subj: str, session_label: str, space: str, s
     )
 
 
+def _export_predicted_surface(
+    out_path: str,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+) -> None:
+    """Export predicted geometry only when all vertex coordinates are finite."""
+    if not np.isfinite(vertices).all():
+        raise RuntimeError(
+            f"Non-finite predicted vertices for {out_path}"
+        )
+
+    trimesh.Trimesh(
+        vertices=vertices,
+        faces=faces,
+        process=False,
+    ).export(out_path)
+
+
 @hydra.main(version_base=None, config_path="pkg://simcortex.configs.deform", config_name="inference")
 def main(cfg: DictConfig):
 
@@ -369,7 +387,7 @@ def main(cfg: DictConfig):
                         v_mm = voxel_to_world(v_vox_orig, A).detach().cpu().numpy().astype(np.float32)
 
                         f = faces_per_subj[i][j]
-                        trimesh.Trimesh(vertices=v_mm, faces=f, process=False).export(out_path)
+                        _export_predicted_surface(out_path, v_mm, f)
 
     # ---------------- MULTI ----------------
     else:
@@ -451,7 +469,7 @@ def main(cfg: DictConfig):
                             v_mm = voxel_to_world(v_vox_orig, A).detach().cpu().numpy().astype(np.float32)
 
                             f = faces_per_subj[i][j]
-                            trimesh.Trimesh(vertices=v_mm, faces=f, process=False).export(out_path)
+                            _export_predicted_surface(out_path, v_mm, f)
 
     if times:
         log.info("Avg inference time/subject: %.4fs", float(sum(times) / len(times)))
