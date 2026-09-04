@@ -37,6 +37,8 @@ import typer
 from nibabel.freesurfer.io import read_geometry
 
 from simcortex import __version__
+from simcortex.preproc.mni_geometry import validate_mni152_template
+
 
 def _require_antspy() -> Any:
     """Import ANTsPy only when Stage 1 functionality is executed."""
@@ -593,6 +595,25 @@ def process_one(
 
     # ---- 2) Estimate/reuse linear registration and explicit surface matrices ----
     need_register = (not skip_existing) or (not f_aff_mat.exists()) or (not f_t1_mni.exists())
+
+    need_mni_template = (
+        need_register
+        or (not f_aseg_mni.exists())
+        or (not skip_existing)
+        or (
+            write_aparc_aseg
+            and f_aparc_native.exists()
+            and ((not f_aparc_mni.exists()) or (not skip_existing))
+        )
+        or (
+            write_filled
+            and f_filled_native.exists()
+            and ((not f_filled_mni.exists()) or (not skip_existing))
+        )
+    )
+    if need_mni_template:
+        validate_mni152_template(mni_template)
+
     if need_register:
         reg = estimate_linear_registration(
             fixed_mni_path=mni_template,
