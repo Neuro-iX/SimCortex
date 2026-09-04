@@ -543,6 +543,11 @@ def mesh_from_topo_sdf(
 
     verts_world = apply_affine(brain_affine, v_np)
 
+    if not np.isfinite(verts_world).all():
+        raise RuntimeError(
+            f"Non-finite InitSurf vertices at level={level}"
+        )
+
     mesh = trimesh.Trimesh(vertices=verts_world, faces=f_np, process=False)
     try:
         trimesh.repair.fix_winding(mesh)
