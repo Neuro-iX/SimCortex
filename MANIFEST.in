@@ -3,3 +3,7 @@ include docker/Dockerfile
 include docker/README.md
 include docker/entrypoint.sh
 include docker/requirements.runtime.txt
+
+# Include scripts required by the Docker release workflow.
+include scripts/run_pipeline.py
+include scripts/docker_smoke_test.sh
