@@ -84,7 +84,20 @@ Official pre-trained checkpoints and dataset split files are available on Zenodo
 
 - **Zenodo record:** [SimCortex v2.0: Pre-trained Models and Dataset Splits](https://zenodo.org/records/18974730)
 
-This record currently provides the packaged segmentation weights, deformation weights, and split CSV files used for evaluation and reproducible experiments.
+The validated SimCortex v2 release checkpoint identities are:
+
+```text
+Segmentation checkpoint:
+  Filename: seg_best_dice.pt
+  SHA256:   2cea6dc1606958dbdb2aea50748b73ff73e604b0c367b3b1588cef7a112c8e06
+
+Deformation checkpoint:
+  Filename: deform_best_rmse.pth
+  SHA256:   3fb84c917953e479e72d59291837bd6b08f40fb197534046b95dc5a452e86b95
+```
+
+These hashes identify the checkpoint files validated for the SimCortex v2 release.
+They can be used to verify local copies before running inference.
 
 ---
 
