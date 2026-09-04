@@ -32,7 +32,7 @@ inference:
   overwrite: true
 
 model:
-  ckpt_path: /path/to/simcortex-runs/deform/exp01_hcpya+oasis1/checkpoints/deform_best_model.pth
+  ckpt_path: /path/to/deform_best_rmse.pth
   strict_load: true
   c_in: 2
   sigma: 1
