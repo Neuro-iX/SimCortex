@@ -47,10 +47,46 @@ The **project itself** provides all four stages. However, the **main Docker imag
 
 ## Installation
 
-From the repository root:
+SimCortex is developed and release-tested on **Linux with Python 3.10**. The
+validated SimCortex v2 environment uses **Python 3.10.19**, **PyTorch 2.1.0**
+with a CUDA 12.1 build, **torchvision 0.16.0**, and **PyTorch3D 0.7.8**.
+
+For the complete four-stage workflow, the **Docker image is the recommended
+installation path** because it preserves the validated PyTorch / CUDA /
+PyTorch3D stack. See [`docker/README.md`](docker/README.md).
+
+### Local source installation
+
+PyTorch3D is intentionally not installed through the SimCortex project metadata
+because its compatible build depends on the selected PyTorch and CUDA versions.
+For a local installation, first create a Python 3.10 environment and install a
+mutually compatible PyTorch / PyTorch3D stack. Then, from the repository root,
+install SimCortex with all declared stage extras:
 
 ```bash
-pip install -e .
+python -m pip install -e ".[preproc,seg,initsurf,deform-metrics]"
+```
+
+The declared extras provide the following stage-specific dependencies:
+
+- `preproc`: ANTsPy (`antspyx`) for N4 correction, registration, and resampling
+- `seg`: MONAI
+- `initsurf`: PyTorch, SciPy, scikit-image, Numba, and python-fcl
+- `deform-metrics`: python-fcl and pymeshlab
+- `torch`: PyTorch, for installations that need the standalone PyTorch extra
+
+Deformation **training and evaluation** additionally require a compatible
+**PyTorch3D** installation. PyTorch3D is not bundled or automatically selected
+by `pip install -e .`.
+
+FreeSurfer is also not installed by SimCortex. Stage 1 consumes existing
+FreeSurfer outputs such as `orig.mgz`, `aseg.mgz`, `aparc+aseg.mgz`,
+`filled.mgz`, and the cortical surfaces under `surf/`.
+
+After installation, verify the public CLI:
+
+```bash
+simcortex --version
 simcortex --help
 simcortex fs-to-mni --help
 simcortex seg --help
@@ -58,23 +94,14 @@ simcortex initsurf --help
 simcortex deform --help
 ```
 
-### Recommended environment
+A base editable install is also available for development or inspection:
 
-- Python 3.10+
-- PyTorch
-- PyTorch3D
-- MONAI
-- `nibabel`, `numpy`, `scipy`, `scikit-image`
-- `pandas`, `openpyxl`
-- `trimesh`, `tqdm`, `python-fcl`
-- `hydra-core`, `omegaconf`, `typer`
+```bash
+python -m pip install -e .
+```
 
-### Optional / stage-specific dependencies
-
-- **ANTsPy** (`antspyx`) for **Stage 1 preprocessing** (N4 bias correction, linear registration, and image resampling in Python)
-- **FreeSurfer outputs** are required as **inputs** to Stage 1 (for example `orig.mgz`, `aseg.mgz`, `aparc+aseg.mgz`, `filled.mgz`, and cortical surfaces under `surf/`)
-- **python-fcl** for collision-related metrics
-- **pymeshlab** for optional mesh-processing utilities
+This base install does **not** install all dependencies required to execute every
+pipeline stage.
 
 ---
 
