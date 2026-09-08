@@ -368,7 +368,11 @@ sc-preproc/
         sub-XXXX_ses-01_from-T1w_to-MNI152_mode-image_xfm.txt
         sub-XXXX_ses-01_from-MNI152_to-T1w_mode-image_xfm.txt
         sub-XXXX_ses-01_from-T1w_to-MNI152_mode-image_xfm.json
+
+      xfm/
         sub-XXXX_ses-01_from-native_to-MNI152_mode-image_desc-antsAffine.mat
+        sub-XXXX_ses-01_from-native_to-MNI152_mode-surface_xfm.txt
+        sub-XXXX_ses-01_from-MNI152_to-native_mode-surface_xfm.txt
 
       surfaces/
         sub-XXXX_ses-01_hemi-L_white.surf.ply
