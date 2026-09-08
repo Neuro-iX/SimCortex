@@ -357,18 +357,18 @@ sc-preproc/
         sub-XXXX_ses-01_desc-fsraw_T1w.nii.gz
         sub-XXXX_ses-01_desc-preproc_T1w.nii.gz
         sub-XXXX_ses-01_desc-aseg_dseg.nii.gz
-        sub-XXXX_ses-01_desc-aparc+aseg_dseg.nii.gz
-        sub-XXXX_ses-01_desc-filled_T1w.nii.gz
+        sub-XXXX_ses-01_desc-aparcaseg_dseg.nii.gz
+        sub-XXXX_ses-01_desc-filled_dseg.nii.gz
 
         sub-XXXX_ses-01_space-MNI152_desc-preproc_T1w.nii.gz
         sub-XXXX_ses-01_space-MNI152_desc-aseg_dseg.nii.gz
-        sub-XXXX_ses-01_space-MNI152_desc-aparc+aseg_dseg.nii.gz
-        sub-XXXX_ses-01_space-MNI152_desc-filled_T1w.nii.gz
+        sub-XXXX_ses-01_space-MNI152_desc-aparcaseg_dseg.nii.gz
+        sub-XXXX_ses-01_space-MNI152_desc-filled_dseg.nii.gz
 
         sub-XXXX_ses-01_from-T1w_to-MNI152_mode-image_xfm.txt
         sub-XXXX_ses-01_from-MNI152_to-T1w_mode-image_xfm.txt
         sub-XXXX_ses-01_from-T1w_to-MNI152_mode-image_xfm.json
-        sub-XXXX_ses-01_from-T1w_to-MNI152_mode-image_desc-antsAffine.mat
+        sub-XXXX_ses-01_from-native_to-MNI152_mode-image_desc-antsAffine.mat
 
       surfaces/
         sub-XXXX_ses-01_hemi-L_white.surf.ply
@@ -397,8 +397,8 @@ This stage trains and applies a 3D U-Net to predict a **9-class segmentation** i
 For each subject under `sc-preproc`:
 
 - `..._space-MNI152_desc-preproc_T1w.nii.gz`
-- `..._space-MNI152_desc-aparc+aseg_dseg.nii.gz`
-- `..._space-MNI152_desc-filled_T1w.nii.gz`
+- `..._space-MNI152_desc-aparcaseg_dseg.nii.gz`
+- `..._space-MNI152_desc-filled_dseg.nii.gz`
 
 ### T1w intensity normalization
 
