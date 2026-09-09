@@ -186,11 +186,12 @@ def tca_fill(levelset, mask, init_pts, bit, LUT):
 
 
 
-""" tca_cut (to be validated)
-This algorithm propagates from object to background.
-It cuts all handles and is used to fix GM segemntation. 
+"""Experimental tca_cut implementation.
 
-Note: this function is not fully validated because we only use tca_fill for CortexODE.
+This algorithm propagates from object to background and is intended to cut
+handles in a level-set representation. It is retained for research/reference
+use only, is not used by the SimCortex v2 pipeline, and has not been validated
+for release use.
 """
 
 def tca_mask_cut(levelset, threshold=1.0):
