@@ -24,7 +24,7 @@ SimCortex v2.0.0 is the journal-version implementation of SimCortex: a modular a
 
 This README focuses on **how to run the pipeline correctly**: expected inputs, produced outputs, folder and file naming conventions, and representative commands for each stage.
 
-The **project itself** provides all four stages. However, the **main Docker image** is intended primarily for **Stage 1 (FreeSurfer to MNI152 preprocessing)**, **Stage 2 (Segmentation)**, **Stage 3 (InitSurf)**, and **Stage 4 (Deform)**.
+The **project and main Docker image support all four stages**.
 
 ---
 
@@ -34,9 +34,8 @@ The **project itself** provides all four stages. However, the **main Docker imag
 - [Pre-trained Weights and Official Splits](#pre-trained-weights-and-official-splits)
 - [Configuration](#configuration)
 - [Data and Folder Conventions](#data-and-folder-conventions)
-- [Coordinate and Surface-Space Contract](#coordinate-and-surface-space-contract)
+- [Coordinate Convention](#coordinate-convention)
 - [Split File Format](#split-file-format)
-- [Recommended Workflow Order](#recommended-workflow-order)
 - [Stage 1 - Preprocessing (FreeSurfer to MNI152)](#stage-1---preprocessing-freesurfer-to-mni152)
 - [Stage 2 - Segmentation (3D U-Net, MNI space)](#stage-2---segmentation-3d-u-net-mni-space)
 - [Stage 3 - Initial Surfaces (InitSurf)](#stage-3---initial-surfaces-initsurf)
@@ -222,78 +221,29 @@ SimCortex reads inputs from `derivatives/` and writes outputs back to `derivativ
 ---
 
 
-## Coordinate and Surface-Space Contract
+## Coordinate Convention
 
-SimCortex uses an explicit coordinate contract across volumes and meshes. This
-distinction is important because the preprocessing stage uses ANTs/ITK image
-transforms while cortical meshes are stored as physical point coordinates.
+SimCortex reconstructs cortical surfaces in a common **1 mm MNI152 space**. The
+validated reference grid has shape `(182, 218, 182)`, and all exported
+`space-MNI152` surfaces are stored in physical **RAS coordinates in
+millimetres**.
 
-### Canonical MNI152 grid
-
-The validated SimCortex MNI152 reference is a **1 mm** NIfTI grid with shape
-`(182, 218, 182)` and affine
-
-```text
-[[-1,  0,  0,   90],
- [ 0,  1,  0, -126],
- [ 0,  0,  1,  -72],
- [ 0,  0,  0,    1]]
-```
-
-The voxel grid is therefore LAS-oriented, while physical NIfTI world
-coordinates follow the usual RAS+ convention in millimeters. Stage 1 validates
-this shape and affine before registration or resampling when the MNI template is
-required.
-
-### Surface coordinates and preprocessing transforms
-
-FreeSurfer surface vertices are read in **tkRAS** coordinates. Stage 1 converts
-them first to **native scanner RAS** coordinates using the FreeSurfer
-`vox2ras` / `vox2ras_tkr` relationship, then applies the explicit native-to-MNI
-surface point transform to obtain **MNI152 RAS-mm** vertices.
-
-The preferred surface transforms are the 4 x 4 matrices under `xfm/`:
+During Stage 1, FreeSurfer surfaces are converted from **tkRAS** to native
+scanner RAS and then transformed to MNI152 space. For surface coordinates, use
+the explicit transforms written under `xfm/`:
 
 ```text
 *_from-native_to-MNI152_mode-surface_xfm.txt
 *_from-MNI152_to-native_mode-surface_xfm.txt
 ```
 
-They are point transforms in RAS millimeters. With a homogeneous column point
-`x`, apply them as `y = M @ x` (equivalently, row-homogeneous points may use
-`x @ M.T`).
+Do not apply the raw ANTs/ITK `*_desc-antsAffine.mat` file directly to PLY
+vertices; it follows the ANTs image-transform convention rather than the
+surface-point convention used by SimCortex.
 
-The raw `*_mode-image_desc-antsAffine.mat` file is an ANTs/ITK
-image-registration transform stored in the ANTs **LPS** convention. When read as
-a physical point transform, the forward affine maps fixed/MNI points to
-moving/native points; SimCortex converts LPS to RAS and inverts that point
-matrix to obtain the native-to-MNI surface transform. Therefore, do **not**
-apply the raw ANTs `.mat` directly to PLY surface vertices; use the explicit
-`mode-surface_xfm.txt` matrices instead.
-
-The older transform files written under `anat/` with
-`*_mode-image_xfm.txt` names are compatibility copies of the surface point
-matrices despite their legacy names. New code should prefer the transforms under
-`xfm/`.
-
-### InitSurf and deformation coordinates
-
-Stage 2 predictions and the Stage 3 SDF/ribbon volumes remain on the MNI NIfTI
-grid. InitSurf obtains marching-cubes vertices in voxel-index coordinates and
-applies the input NIfTI affine before exporting PLY meshes, so
-`space-MNI152` InitSurf surfaces are stored in **MNI152 RAS millimeters**.
-
-The deformation stage reads those world-mm surfaces, converts them to voxel
-`(I, J, K)` coordinates with the inverse NIfTI affine, and applies the same
-center crop/pad shift used for the input volumes. The deformation network uses
-the internal shape `(184, 224, 184)` in `(D, H, W)` / `(I, J, K)` order.
-Sampling with `torch.nn.functional.grid_sample` reorders the coordinates to the
-expected `(x, y, z) = (W, H, D)` convention and uses `align_corners=True`.
-
-Before a predicted surface is written, SimCortex removes the crop/pad shift and
-applies the original voxel-to-world affine. Final `space-MNI152` deformation
-PLY files are therefore again expressed in **MNI152 RAS millimeters**; the
-internal `(184, 224, 184)` tensor shape is not a different output image space.
+InitSurf and Deform convert between world and voxel coordinates internally as
+needed, but exported `space-MNI152` meshes are always converted back to
+**MNI152 RAS-mm** coordinates.
 
 ## Split File Format
 
@@ -361,19 +311,6 @@ outputs.out_roots.HCP_YA
 
 ---
 
-## Recommended Workflow Order
-
-A typical full workflow is:
-
-1. Run **Preprocessing** for each dataset to create `sc-preproc`
-2. Train **Segmentation** and select a checkpoint
-3. Run **Segmentation inference** to create `sc-seg`
-4. Run **InitSurf** to create `sc-initsurf`
-5. Train, infer, and evaluate **Deformation** to create `sc-deform`
-
-This staged design is intentional and makes debugging, ablation, and evaluation easier.
-
----
 
 ## Stage 1 - Preprocessing (FreeSurfer to MNI152)
 
@@ -381,17 +318,6 @@ This stage converts key **FreeSurfer 7.4.1 outputs** into a **BIDS-derivatives-s
 
 The current implementation is fully Python-based for preprocessing and no longer depends on external command-line tools.
 
-### What this stage does
-
-For each FreeSurfer subject, Stage 1 performs the following steps:
-
-1. Export native FreeSurfer volumes from MGZ to NIfTI using `nibabel`
-2. Optionally apply **N4 bias-field correction** to `orig.mgz` using **ANTsPy**
-3. Estimate a **linear transform** (`rigid` or `affine`) from native T1w to the MNI template using **ANTsPy**
-4. Resample FreeSurfer-derived volumes into **MNI152 space**
-5. Read FreeSurfer cortical surfaces directly in Python, convert them from **surface/tkRAS** to **scanner/world RAS**, and write:
-   - native/scanner-space PLY surfaces
-   - MNI-space PLY surfaces
 
 ### Inputs
 
@@ -508,11 +434,6 @@ sc-preproc/
         sub-XXXX_ses-01_space-MNI152_hemi-R_pial.surf.ply
 ```
 
-### What this stage provides to later stages
-
-Stage 1 provides the MNI-aligned T1w image and MNI-aligned FreeSurfer-derived target volumes and surfaces used by later stages of the SimCortex pipeline.
-
----
 
 ## Stage 2 - Segmentation (3D U-Net, MNI space)
 
@@ -600,7 +521,7 @@ In this mode, predictions are written under:
 ```
 Note: for single-dataset inference, dataset.split_file should normally refer to a split CSV for that dataset only.
 
-### Multi-dataset inference 
+#### Multi-dataset inference
 
 Use dataset.roots and outputs.out_roots when running inference across multiple datasets from one combined split file.
 
@@ -891,22 +812,30 @@ docker/README.md
 
 ## Citation
 
-SimCortex v2 corresponds to the manuscript:
+If you use SimCortex in your research, please cite the published SimCortex
+paper:
 
-**Kaveh Moradkhani and Sylvain Bouix. _SimCortex v2: Joint Cortical Surface
-Reconstruction with Near-Zero Collisions and Self-Intersections_. Submitted to
-_Medical Image Analysis_.**
+```bibtex
+@inproceedings{Moradkhani2025SimCortex,
+  author    = {Moradkhani, Kaveh and Rushmore, R. Jarrett and Bouix, Sylvain},
+  title     = {{SimCortex}: Collision-free Simultaneous Cortical Surfaces Reconstruction},
+  booktitle = {International Workshop on Shape in Medical Imaging},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {16171},
+  pages     = {347--359},
+  publisher = {Springer Nature Switzerland},
+  address   = {Cham},
+  year      = {2025},
+  doi       = {10.1007/978-3-032-06774-6_26}
+}
+```
 
-The v2 manuscript is currently under review and does not yet have final
-publication metadata such as a DOI, volume, issue, or page range. Please use the
-repository [`CITATION.cff`](CITATION.cff) for the current preferred citation
-metadata.
+The SimCortex v2 journal manuscript, *SimCortex v2: Joint Cortical Surface
+Reconstruction with Near-Zero Collisions and Self-Intersections*, is currently
+submitted to *Medical Image Analysis*. Its final citation will be added when a
+stable public bibliographic record is available.
 
-The previous published SimCortex conference paper is:
-
-**Kaveh Moradkhani, R. Jarrett Rushmore, and Sylvain Bouix. _SimCortex:
-Collision-free Simultaneous Cortical Surfaces Reconstruction_. ShapeMI/MICCAI
-2025.** https://doi.org/10.1007/978-3-032-06774-6_26
+Repository citation metadata is also provided in [`CITATION.cff`](CITATION.cff).
 
 ## License
 
