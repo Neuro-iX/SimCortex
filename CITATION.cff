@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use SimCortex v2 in your research, please cite the preferred manuscript below. The published SimCortex conference paper is listed under references."
+message: "If you use SimCortex in your research, please cite the published SimCortex paper below. The SimCortex v2 journal manuscript is listed under references."
 title: "SimCortex"
 type: software
 version: "2.0.0"
@@ -15,26 +15,30 @@ url: "https://github.com/Neuro-iX/SimCortex"
 license: "Apache-2.0"
 
 preferred-citation:
-  type: article
-  title: "SimCortex v2: Joint Cortical Surface Reconstruction with Near-Zero Collisions and Self-Intersections"
+  type: conference-paper
+  title: "SimCortex: Collision-free Simultaneous Cortical Surfaces Reconstruction"
   authors:
     - family-names: "Moradkhani"
       given-names: "Kaveh"
+    - family-names: "Rushmore"
+      given-names: "R. Jarrett"
     - family-names: "Bouix"
       given-names: "Sylvain"
-  journal: "Medical Image Analysis"
-  notes: "Submitted to Medical Image Analysis."
+  year: 2025
+  volume: 16171
+  pages: "347-359"
+  publisher:
+    name: "Springer Nature Switzerland"
+  doi: "10.1007/978-3-032-06774-6_26"
+  url: "https://doi.org/10.1007/978-3-032-06774-6_26"
 
 references:
-  - type: conference-paper
-    title: "SimCortex: Collision-free Simultaneous Cortical Surfaces Reconstruction"
+  - type: article
+    title: "SimCortex v2: Joint Cortical Surface Reconstruction with Near-Zero Collisions and Self-Intersections"
     authors:
       - family-names: "Moradkhani"
         given-names: "Kaveh"
-      - family-names: "Rushmore"
-        given-names: "R. Jarrett"
       - family-names: "Bouix"
         given-names: "Sylvain"
-    year: 2025
-    doi: "10.1007/978-3-032-06774-6_26"
-    url: "https://doi.org/10.1007/978-3-032-06774-6_26"
+    journal: "Medical Image Analysis"
+    notes: "Submitted to Medical Image Analysis."
