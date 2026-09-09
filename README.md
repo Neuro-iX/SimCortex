@@ -298,6 +298,25 @@ internal `(184, 224, 184)` tensor shape is not a different output image space.
 
 A split CSV is required for Segmentation, InitSurf, and Deform.
 
+### Session handling
+
+The current split-file contract is **subject-based**: session is not a split
+CSV column. Segmentation, InitSurf, and Deform instead use one
+`dataset.session_label` for the entire run (default: `"01"`), and resolve input
+and output paths under the corresponding `ses-<label>` directory.
+
+Therefore, a single downstream run does not represent multiple sessions of the
+same subject independently through the split CSV. For a multi-session dataset,
+run the stage separately for each session and override
+`dataset.session_label=<label>` so that it matches the session written by the
+preceding stage.
+
+Stage 1 follows the same explicit-session pattern through
+`--session-label` (default: `01`) and writes session-qualified derivatives.
+Its FreeSurfer input resolver supports both flat subject directories and nested
+`sub-*/ses-*` layouts, but the selected session label still defines the
+derivative paths produced by that invocation.
+
 ### Single-dataset split
 
 Minimum columns:
