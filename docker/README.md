@@ -96,23 +96,76 @@ image.
 
 ## Build the Image
 
-From the repository root:
+The Dockerfile intentionally separates the validated scientific runtime from the
+SimCortex source tree. It first unpacks a `conda-pack` archive containing the
+validated Python/CUDA dependencies, then installs the SimCortex package from the
+current repository checkout with `--no-deps`. This avoids resolving a different
+PyTorch/PyTorch3D stack during the Docker build.
 
-```bash
-docker build -f docker/Dockerfile -t simcortex:2.0.0 .
-```
+### Prepare the packed runtime archive
 
-The image is expected to bundle the SimCortex runtime stack, including the
-packaged `simcortex` CLI, ANTsPy, PyTorch, PyTorch3D, and Hydra configuration
-files.
-
-The current Dockerfile expects the packed environment archive:
+The required build input is:
 
 ```text
 docker/simcortex-env.tar.gz
 ```
 
-to be present in the Docker build context.
+This archive is intentionally ignored by Git and must not be committed. A clean
+source checkout therefore needs this build prerequisite to be created before
+running `docker build`.
+
+Create it from a **dedicated Conda environment that already contains the
+validated runtime stack described in the root README**. Before packing, inspect
+editable installs:
+
+```bash
+python -m pip list --editable
+```
+
+Do not pack unrelated editable projects. SimCortex itself does not need to be
+embedded in the archive because the Dockerfile installs the current checkout
+after unpacking the runtime.
+
+For the v2.0.0 environment, pack the runtime from the activated environment with:
+
+```bash
+ENV_PREFIX="$(python -c 'import sys; print(sys.prefix)')"
+
+conda-pack \
+  --prefix "$ENV_PREFIX" \
+  --output docker/simcortex-env.tar.gz \
+  --format tar.gz \
+  --compress-level 4 \
+  --n-threads -1 \
+  --ignore-editable-packages \
+  --exclude 'bin/simcortex' \
+  --exclude 'lib/python3.10/site-packages/__editable__.simcortex-2.0.0.pth' \
+  --exclude 'lib/python3.10/site-packages/simcortex-2.0.0.dist-info/*' \
+  --force
+```
+
+The exclusion entries keep the archive dependency-only; the image receives the
+release's SimCortex code from the checked-out source tree.
+
+Optionally verify that no editable SimCortex installation was embedded:
+
+```bash
+if tar -tzf docker/simcortex-env.tar.gz | \
+  grep -Eq '(^|/)bin/simcortex$|__editable__\.simcortex|simcortex-2\.0\.0\.dist-info/'; then
+  echo "ERROR: editable SimCortex artifacts found in packed runtime" >&2
+  exit 1
+fi
+```
+
+Then build from the repository root:
+
+```bash
+docker build -f docker/Dockerfile -t simcortex:2.0.0 .
+```
+
+The resulting image bundles the validated runtime stack together with the
+packaged `simcortex` CLI, ANTsPy, PyTorch, PyTorch3D, and Hydra configuration
+files.
 
 ---
 
