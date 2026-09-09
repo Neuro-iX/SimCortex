@@ -42,6 +42,7 @@ The **project itself** provides all four stages. However, the **main Docker imag
 - [Stage 3 - Initial Surfaces (InitSurf)](#stage-3---initial-surfaces-initsurf)
 - [Stage 4 - Deformation (Deform)](#stage-4---deformation-deform)
 - [Docker](#docker)
+- [Citation](#citation)
 - [License](#license)
 
 ---
@@ -887,6 +888,25 @@ docker/README.md
 ```
 
 ---
+
+## Citation
+
+SimCortex v2 corresponds to the manuscript:
+
+**Kaveh Moradkhani and Sylvain Bouix. _SimCortex v2: Joint Cortical Surface
+Reconstruction with Near-Zero Collisions and Self-Intersections_. Submitted to
+_Medical Image Analysis_.**
+
+The v2 manuscript is currently under review and does not yet have final
+publication metadata such as a DOI, volume, issue, or page range. Please use the
+repository [`CITATION.cff`](CITATION.cff) for the current preferred citation
+metadata.
+
+The previous published SimCortex conference paper is:
+
+**Kaveh Moradkhani, R. Jarrett Rushmore, and Sylvain Bouix. _SimCortex:
+Collision-free Simultaneous Cortical Surfaces Reconstruction_. ShapeMI/MICCAI
+2025.** https://doi.org/10.1007/978-3-032-06774-6_26
 
 ## License
 
