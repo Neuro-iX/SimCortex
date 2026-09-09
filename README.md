@@ -34,6 +34,7 @@ The **project itself** provides all four stages. However, the **main Docker imag
 - [Pre-trained Weights and Official Splits](#pre-trained-weights-and-official-splits)
 - [Configuration](#configuration)
 - [Data and Folder Conventions](#data-and-folder-conventions)
+- [Coordinate and Surface-Space Contract](#coordinate-and-surface-space-contract)
 - [Split File Format](#split-file-format)
 - [Recommended Workflow Order](#recommended-workflow-order)
 - [Stage 1 - Preprocessing (FreeSurfer to MNI152)](#stage-1---preprocessing-freesurfer-to-mni152)
@@ -218,6 +219,80 @@ SimCortex reads inputs from `derivatives/` and writes outputs back to `derivativ
 > Important: keep dataset naming and folder organization consistent across stages. In practice, this makes multi-stage and multi-dataset workflows much easier to maintain.
 
 ---
+
+
+## Coordinate and Surface-Space Contract
+
+SimCortex uses an explicit coordinate contract across volumes and meshes. This
+distinction is important because the preprocessing stage uses ANTs/ITK image
+transforms while cortical meshes are stored as physical point coordinates.
+
+### Canonical MNI152 grid
+
+The validated SimCortex MNI152 reference is a **1 mm** NIfTI grid with shape
+`(182, 218, 182)` and affine
+
+```text
+[[-1,  0,  0,   90],
+ [ 0,  1,  0, -126],
+ [ 0,  0,  1,  -72],
+ [ 0,  0,  0,    1]]
+```
+
+The voxel grid is therefore LAS-oriented, while physical NIfTI world
+coordinates follow the usual RAS+ convention in millimeters. Stage 1 validates
+this shape and affine before registration or resampling when the MNI template is
+required.
+
+### Surface coordinates and preprocessing transforms
+
+FreeSurfer surface vertices are read in **tkRAS** coordinates. Stage 1 converts
+them first to **native scanner RAS** coordinates using the FreeSurfer
+`vox2ras` / `vox2ras_tkr` relationship, then applies the explicit native-to-MNI
+surface point transform to obtain **MNI152 RAS-mm** vertices.
+
+The preferred surface transforms are the 4 x 4 matrices under `xfm/`:
+
+```text
+*_from-native_to-MNI152_mode-surface_xfm.txt
+*_from-MNI152_to-native_mode-surface_xfm.txt
+```
+
+They are point transforms in RAS millimeters. With a homogeneous column point
+`x`, apply them as `y = M @ x` (equivalently, row-homogeneous points may use
+`x @ M.T`).
+
+The raw `*_mode-image_desc-antsAffine.mat` file is an ANTs/ITK
+image-registration transform stored in the ANTs **LPS** convention. When read as
+a physical point transform, the forward affine maps fixed/MNI points to
+moving/native points; SimCortex converts LPS to RAS and inverts that point
+matrix to obtain the native-to-MNI surface transform. Therefore, do **not**
+apply the raw ANTs `.mat` directly to PLY surface vertices; use the explicit
+`mode-surface_xfm.txt` matrices instead.
+
+The older transform files written under `anat/` with
+`*_mode-image_xfm.txt` names are compatibility copies of the surface point
+matrices despite their legacy names. New code should prefer the transforms under
+`xfm/`.
+
+### InitSurf and deformation coordinates
+
+Stage 2 predictions and the Stage 3 SDF/ribbon volumes remain on the MNI NIfTI
+grid. InitSurf obtains marching-cubes vertices in voxel-index coordinates and
+applies the input NIfTI affine before exporting PLY meshes, so
+`space-MNI152` InitSurf surfaces are stored in **MNI152 RAS millimeters**.
+
+The deformation stage reads those world-mm surfaces, converts them to voxel
+`(I, J, K)` coordinates with the inverse NIfTI affine, and applies the same
+center crop/pad shift used for the input volumes. The deformation network uses
+the internal shape `(184, 224, 184)` in `(D, H, W)` / `(I, J, K)` order.
+Sampling with `torch.nn.functional.grid_sample` reorders the coordinates to the
+expected `(x, y, z) = (W, H, D)` convention and uses `align_corners=True`.
+
+Before a predicted surface is written, SimCortex removes the crop/pad shift and
+applies the original voxel-to-world affine. Final `space-MNI152` deformation
+PLY files are therefore again expressed in **MNI152 RAS millimeters**; the
+internal `(184, 224, 184)` tensor shape is not a different output image space.
 
 ## Split File Format
 
