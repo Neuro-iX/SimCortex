@@ -93,7 +93,6 @@ objective:
   normal_weight: 0.25
   reg_warmup_epochs: 25
 
-  # White-pial HD guardrail.
   hd_weight: 5.5
   hd_p: 0.05
   hd_lambda_mm: 0.75
