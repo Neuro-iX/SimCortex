@@ -1,6 +1,6 @@
-# SimCortex v2.0 Docker Guide
+# SimCortex v2.0.0 Docker Guide
 
-This document explains how to build and run the **SimCortex v2.0** Docker image.
+This document explains how to build and run the **SimCortex v2.0.0** Docker image.
 It covers containerized execution of the `simcortex` CLI for all four stages:
 **Stage 1 (Preprocessing)**, **Stage 2 (Segmentation)**, **Stage 3 (InitSurf)**,
 and **Stage 4 (Deform)**.
@@ -64,33 +64,61 @@ a separate workflow or naming convention.
 
 ## Published Resources
 
+- **Source code:** [Neuro-iX/SimCortex](https://github.com/Neuro-iX/SimCortex)
 - **Docker Hub:** [kavehmoradkhani/simcortex](https://hub.docker.com/r/kavehmoradkhani/simcortex)
-- **Zenodo pre-trained weights and splits:** [SimCortex v2.0: Pre-trained Models and Dataset Splits](https://zenodo.org/records/18974730)
+- **Pre-trained models and reproducibility files:** [Zenodo](https://doi.org/10.5281/zenodo.22710781)
+- **Reproducibility dataset:** [FRDR](https://doi.org/10.20383/103.01769)
 
 ---
 
 ## Image Tags
 
-Examples below use the local image tag:
-
-```text
-simcortex:2.0.0
-```
-
-After publishing to Docker Hub, the corresponding versioned tag is:
+The recommended versioned release is:
 
 ```text
 kavehmoradkhani/simcortex:2.0.0
 ```
 
-Repository:
+The convenience alias:
 
 ```text
-https://hub.docker.com/r/kavehmoradkhani/simcortex
+kavehmoradkhani/simcortex:latest
 ```
 
-Keep versioned tags even if `latest` is also published so users can pin an exact
-image.
+currently points to the same SimCortex v2.0.0 image.
+
+For exact reproducibility, use the immutable registry digest:
+
+```text
+kavehmoradkhani/simcortex@sha256:b4dfdfa36a10eeedadd1eb4d62adfe751025e45336e6fdfeab717a2f6245ec25
+```
+
+The published image was built from Git revision:
+
+```text
+59f167e02ebe9680f9d9f2293827f7983d3325a3
+```
+
+Pull the versioned image with:
+
+```bash
+docker pull kavehmoradkhani/simcortex:2.0.0
+```
+
+or pin the exact published artifact:
+
+```bash
+docker pull kavehmoradkhani/simcortex@sha256:b4dfdfa36a10eeedadd1eb4d62adfe751025e45336e6fdfeab717a2f6245ec25
+```
+
+For local development builds from source, the local tag used in this guide is:
+
+```text
+simcortex:2.0.0
+```
+
+For published workflows and reproducible analyses, prefer the versioned Docker
+Hub tag or the immutable digest.
 
 ---
 
@@ -174,36 +202,36 @@ files.
 Show the main CLI:
 
 ```bash
-docker run --rm simcortex:2.0.0 simcortex --help
+docker run --rm kavehmoradkhani/simcortex:2.0.0 simcortex --help
 ```
 
 Show help for all four public stages:
 
 ```bash
-docker run --rm simcortex:2.0.0 simcortex fs-to-mni --help
-docker run --rm simcortex:2.0.0 simcortex seg --help
-docker run --rm simcortex:2.0.0 simcortex initsurf --help
-docker run --rm simcortex:2.0.0 simcortex deform --help
+docker run --rm kavehmoradkhani/simcortex:2.0.0 simcortex fs-to-mni --help
+docker run --rm kavehmoradkhani/simcortex:2.0.0 simcortex seg --help
+docker run --rm kavehmoradkhani/simcortex:2.0.0 simcortex initsurf --help
+docker run --rm kavehmoradkhani/simcortex:2.0.0 simcortex deform --help
 ```
 
 Verify important Python packages:
 
 ```bash
-docker run --rm simcortex:2.0.0 \
+docker run --rm kavehmoradkhani/simcortex:2.0.0 \
   python -c "import ants, torch, pytorch3d, pymeshlab, simcortex; print(torch.__version__)"
 ```
 
 Verify GPU visibility:
 
 ```bash
-docker run --rm --gpus all simcortex:2.0.0 \
+docker run --rm --gpus all kavehmoradkhani/simcortex:2.0.0 \
   python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.device_count())"
 ```
 
 You can also run the repository smoke test:
 
 ```bash
-bash scripts/docker_smoke_test.sh simcortex:2.0.0
+bash scripts/docker_smoke_test.sh kavehmoradkhani/simcortex:2.0.0
 ```
 
 ---
@@ -218,7 +246,7 @@ docker run --rm \
   -e HOME=/tmp \
   -e UMASK=002 \
   [mounts] \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   <command>
 ```
 
@@ -237,7 +265,7 @@ docker run --rm --gpus all \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/runs:/runs \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex --help
 ```
 
@@ -297,7 +325,7 @@ Overrides can be passed directly through the CLI inside `docker run`.
 General pattern:
 
 ```bash
-docker run --rm [docker-options] simcortex:2.0.0 \
+docker run --rm [docker-options] kavehmoradkhani/simcortex:2.0.0 \
   simcortex <stage> <command> key=value key=value
 ```
 
@@ -310,7 +338,7 @@ docker run --rm \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/runs:/runs \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex initsurf generate \
   dataset.split_file=/data/splits/dataset_split.csv \
   dataset.split_name=all \
@@ -327,21 +355,21 @@ docker run --rm \
 Print the installed package location:
 
 ```bash
-docker run --rm simcortex:2.0.0 \
+docker run --rm kavehmoradkhani/simcortex:2.0.0 \
   python -c "import simcortex, pathlib; print(pathlib.Path(simcortex.__file__).resolve().parent)"
 ```
 
 Print an InitSurf config:
 
 ```bash
-docker run --rm simcortex:2.0.0 \
+docker run --rm kavehmoradkhani/simcortex:2.0.0 \
   python -c "import simcortex, pathlib; p=pathlib.Path(simcortex.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; print(p.read_text())"
 ```
 
 Print a Deform training config:
 
 ```bash
-docker run --rm simcortex:2.0.0 \
+docker run --rm kavehmoradkhani/simcortex:2.0.0 \
   python -c "import simcortex, pathlib; p=pathlib.Path(simcortex.__file__).resolve().parent/'configs'/'deform'/'train.yaml'; print(p.read_text())"
 ```
 
@@ -352,7 +380,7 @@ mkdir -p /tmp/simcortex_cfg
 
 docker run --rm \
   -v /tmp/simcortex_cfg:/out \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   python -c "import simcortex, pathlib; p=pathlib.Path(simcortex.__file__).resolve().parent/'configs'/'initsurf'/'generate.yaml'; open('/out/generate.yaml','w').write(p.read_text())"
 ```
 
@@ -381,7 +409,7 @@ docker run --rm --gpus all \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/runs:/runs \
   -v /home/<user>/myconfigs:/cfg:ro \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex deform train user_config=/cfg/train.yaml
 ```
 
@@ -408,7 +436,7 @@ docker run --rm \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /path/to/MNI152_T1_1mm.nii.gz:/templates/MNI152_T1_1mm.nii.gz:ro \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex fs-to-mni \
   --freesurfer-root /data/<dataset>/derivatives/freesurfer-7.4.1 \
   --out-deriv-root /data/<dataset>/derivatives/sc-preproc \
@@ -431,7 +459,7 @@ docker run --rm --gpus all \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/runs:/runs \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex seg train \
   dataset.path=/data/<dataset>/derivatives/sc-preproc \
   dataset.split_file=/data/splits/<dataset>_split.csv \
@@ -447,7 +475,7 @@ docker run --rm --gpus all \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/checkpoints:/checkpoints:ro \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex seg infer \
   dataset.path=/data/<dataset>/derivatives/sc-preproc \
   dataset.split_file=/data/splits/<dataset>_split.csv \
@@ -465,7 +493,7 @@ docker run --rm \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/runs:/runs \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex initsurf generate \
   dataset.split_file=/data/splits/dataset_split.csv \
   dataset.split_name=all \
@@ -484,7 +512,7 @@ docker run --rm --gpus all \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/runs:/runs \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex deform train \
   outputs.root=/runs/deform/exp01
 ```
@@ -498,7 +526,7 @@ docker run --rm --gpus all \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/checkpoints:/checkpoints:ro \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex deform infer \
   model.ckpt_path=/checkpoints/deform_best_rmse.pth
 ```
@@ -512,7 +540,7 @@ docker run --rm --gpus all \
   -e UMASK=002 \
   -v /home/<user>/datasets:/data \
   -v /home/<user>/runs:/runs \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex deform eval
 ```
 
@@ -533,7 +561,7 @@ enable GPU access with:
 Check visibility with:
 
 ```bash
-docker run --rm --gpus all simcortex:2.0.0 \
+docker run --rm --gpus all kavehmoradkhani/simcortex:2.0.0 \
   python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.device_count())"
 ```
 
@@ -566,7 +594,7 @@ docker run --rm \
   -e UMASK=002 \
   -v /project/data:/data \
   -v /project/runs:/runs \
-  simcortex:2.0.0 \
+  kavehmoradkhani/simcortex:2.0.0 \
   simcortex --help
 ```
 
@@ -574,38 +602,66 @@ docker run --rm \
 
 ## Docker Hub Publication
 
-Build the versioned image:
+SimCortex v2.0.0 is published on Docker Hub. Both the `2.0.0` and `latest`
+tags currently resolve to:
 
-```bash
-docker build -f docker/Dockerfile -t simcortex:2.0.0 .
+```text
+sha256:b4dfdfa36a10eeedadd1eb4d62adfe751025e45336e6fdfeab717a2f6245ec25
 ```
 
-Tag it for Docker Hub:
+The published image was built from Git revision:
+
+```text
+59f167e02ebe9680f9d9f2293827f7983d3325a3
+```
+
+The following procedure documents how the versioned release image was built
+and published.
+
+From the repository root, attach the source revision and release metadata as
+OCI labels:
+
+```bash
+REV="$(git rev-parse HEAD)"
+CREATED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+docker build \
+  -f docker/Dockerfile \
+  -t simcortex:2.0.0 \
+  --label "org.opencontainers.image.title=SimCortex" \
+  --label "org.opencontainers.image.description=SimCortex v2 cortical surface reconstruction pipeline" \
+  --label "org.opencontainers.image.version=2.0.0" \
+  --label "org.opencontainers.image.revision=$REV" \
+  --label "org.opencontainers.image.created=$CREATED" \
+  --label "org.opencontainers.image.source=https://github.com/Neuro-iX/SimCortex" \
+  --label "org.opencontainers.image.url=https://github.com/Neuro-iX/SimCortex" \
+  --label "org.opencontainers.image.licenses=Apache-2.0" \
+  .
+```
+
+Tag the validated image for Docker Hub:
 
 ```bash
 docker tag simcortex:2.0.0 kavehmoradkhani/simcortex:2.0.0
 ```
 
-Log in:
+Authenticate and push the versioned release:
 
 ```bash
 docker login
-```
-
-Push:
-
-```bash
 docker push kavehmoradkhani/simcortex:2.0.0
 ```
 
-Optionally publish `latest` only after validating the versioned image:
+After validating the published versioned image, update `latest` to the same
+tested image:
 
 ```bash
 docker tag simcortex:2.0.0 kavehmoradkhani/simcortex:latest
 docker push kavehmoradkhani/simcortex:latest
 ```
 
-The versioned tag should remain the primary reproducibility reference.
+The versioned tag remains the primary human-readable reproducibility reference;
+the registry digest is the immutable reference.
 
 ---
 

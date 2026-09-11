@@ -797,10 +797,35 @@ This stage writes the following Excel reports:
 
 ## Docker
 
+The official SimCortex v2.0.0 container is published on Docker Hub:
 
-Docker support is provided as an **execution environment** for the SimCortex pipeline.
+- **Docker Hub:** [kavehmoradkhani/simcortex](https://hub.docker.com/r/kavehmoradkhani/simcortex)
+- **Versioned image:** `kavehmoradkhani/simcortex:2.0.0`
+- **Latest alias:** `kavehmoradkhani/simcortex:latest`
 
-The main Docker image is intended to support **all four stages**:
+Pull the versioned release:
+
+```bash
+docker pull kavehmoradkhani/simcortex:2.0.0
+```
+
+For exact reproducibility, the SimCortex v2.0.0 image can be pulled by its
+immutable registry digest:
+
+```bash
+docker pull kavehmoradkhani/simcortex@sha256:b4dfdfa36a10eeedadd1eb4d62adfe751025e45336e6fdfeab717a2f6245ec25
+```
+
+The published `2.0.0` and `latest` tags currently resolve to this same image
+digest.
+
+The release image was built from SimCortex source revision:
+
+```text
+59f167e02ebe9680f9d9f2293827f7983d3325a3
+```
+
+The container supports all four stages:
 
 - **Stage 1 — Preprocessing**
 - **Stage 2 — Segmentation**
@@ -810,32 +835,34 @@ The main Docker image is intended to support **all four stages**:
 Basic CLI check:
 
 ```bash
-docker run --rm simcortex:2.0.0 simcortex --help
+docker run --rm \
+  kavehmoradkhani/simcortex:2.0.0 \
+  simcortex --help
 ```
 
 GPU visibility check:
 
 ```bash
-docker run --rm --gpus all simcortex:2.0.0 \
+docker run --rm --gpus all \
+  kavehmoradkhani/simcortex:2.0.0 \
   python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.device_count())"
 ```
 
+The validated release environment includes Python 3.10, PyTorch 2.1.0 with
+CUDA 12.1, PyTorch3D 0.7.8, and ANTsPy 0.6.1.
+
 For full Docker usage, including:
 
-- the published Docker image on Docker Hub: [kavehmoradkhani/simcortex](https://hub.docker.com/r/kavehmoradkhani/simcortex)
-- running as the host user with `--user $(id -u):$(id -g)`
-- mounting datasets and outputs with `-v`
-- passing Hydra overrides from the CLI
-- extracting packaged YAML configs from inside the container
-- using custom edited YAML files
-- stage-specific Docker command examples for **Stage 1–4**
-- shared server and Apptainer notes
+- mounting datasets, outputs, checkpoints, and templates;
+- running with the host UID/GID;
+- passing Hydra overrides;
+- inspecting packaged YAML configurations;
+- Stage 1–4 Docker examples;
+- GPU execution;
+- shared-server and HPC usage;
+- Apptainer/Singularity usage;
 
-see:
-
-```text
-docker/README.md
-```
+see [`docker/README.md`](docker/README.md).
 
 ---
 
