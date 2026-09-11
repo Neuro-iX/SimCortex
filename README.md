@@ -2,7 +2,13 @@
   <img src="docs/assets/simcortex-logo.png" alt="SimCortex logo" width="320"/>
 </p>
 
-SimCortex v2.0.0 is the journal-version implementation of SimCortex: a modular and reproducible framework for cortical surface reconstruction in **MNI152 space**. It provides four practical stages that can be run independently or as a full pipeline:
+<p align="center">
+  <a href="https://doi.org/10.5281/zenodo.22710781">
+    <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.22710781.svg" alt="Zenodo DOI"/>
+  </a>
+</p>
+
+SimCortex v2.0.0 is the implementation accompanying the journal manuscript of SimCortex: a modular and reproducible framework for cortical surface reconstruction in **MNI152 space**. It provides four practical stages that can be run independently or as a full pipeline:
 
 > **Previous version:** The original ShapeMI/MICCAI 2025 conference implementation is preserved as:
 > - [SimCortex v1.0.0 release](https://github.com/Neuro-iX/SimCortex/releases/tag/v1.0.0)
@@ -108,9 +114,18 @@ pipeline stage.
 
 ## Pre-trained Weights and Official Splits
 
-Official pre-trained checkpoints and dataset split files are available on Zenodo:
+The finalized SimCortex v2 pre-trained models, configuration files, dataset
+splits, and reproducibility metadata are archived on Zenodo:
 
-- **Zenodo record:** [SimCortex v2.0: Pre-trained Models and Dataset Splits](https://zenodo.org/records/18974730)
+- **Pre-trained models and reproducibility files:**
+  [SimCortex v2: Pre-trained Models and Reproducibility Files](https://doi.org/10.5281/zenodo.22710781)
+
+The associated reproducibility dataset, including the processed development
+data and the multi-dataset evaluation cohort used in the SimCortex v2 study,
+is archived separately in the Federated Research Data Repository (FRDR):
+
+- **Reproducibility dataset:**
+  [SimCortex Reproducibility Dataset for Cortical Surface Reconstruction](https://doi.org/10.20383/103.01769)
 
 The validated SimCortex v2 release checkpoint identities are:
 
@@ -119,13 +134,27 @@ Segmentation checkpoint:
   Filename: seg_best_dice.pt
   SHA256:   2cea6dc1606958dbdb2aea50748b73ff73e604b0c367b3b1588cef7a112c8e06
 
-Deformation checkpoint:
+Primary deformation checkpoint:
   Filename: deform_best_rmse.pth
   SHA256:   3fb84c917953e479e72d59291837bd6b08f40fb197534046b95dc5a452e86b95
+
+Secondary deformation checkpoint:
+  Filename: deform_best_model.pth
+  SHA256:   d30d3218069a6eb395dacd3ff0dd085a93f6f0102616eed809b90c362b885b40
 ```
 
-These hashes identify the checkpoint files validated for the SimCortex v2 release.
-They can be used to verify local copies before running inference.
+`deform_best_rmse.pth` is the recommended deformation checkpoint and is the
+checkpoint used for the final SimCortex v2 paper evaluation.
+`deform_best_model.pth` is retained as an alternative checkpoint for
+reproducibility and comparison.
+
+The Zenodo archive also contains the frozen segmentation, InitSurf, and
+deformation YAML configurations, the official development split, the
+560-case evaluation cohort definition, SHA256 checksums, and release
+provenance metadata.
+
+The checkpoint hashes above can be used to verify local copies before running
+inference.
 
 ---
 
@@ -835,8 +864,30 @@ Reconstruction with Near-Zero Collisions and Self-Intersections*, is currently
 submitted to *Medical Image Analysis*. Its final citation will be added when a
 stable public bibliographic record is available.
 
+### Model and data releases
+
+The finalized SimCortex v2 model artifacts are available on Zenodo:
+
+- Moradkhani, K. & Bouix, S. (2026). *SimCortex v2: Pre-trained Models and
+  Reproducibility Files* (Version v2). Zenodo.
+  https://doi.org/10.5281/zenodo.22710781
+
+The associated reproducibility dataset is available through FRDR:
+
+- Moradkhani, K. & Bouix, S. (2026). *SimCortex Reproducibility Dataset for
+  Cortical Surface Reconstruction*. Federated Research Data Repository.
+  https://doi.org/10.20383/103.01769
+
 Repository citation metadata is also provided in [`CITATION.cff`](CITATION.cff).
 
 ## License
 
-See the repository `LICENSE` file.
+The SimCortex source code in this repository is licensed under the
+[Apache License 2.0](LICENSE).
+
+The separately archived SimCortex v2 pre-trained model and reproducibility
+files on Zenodo are released under
+[Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/).
+
+Dataset access and reuse remain subject to the terms associated with the
+corresponding source datasets and the FRDR record.

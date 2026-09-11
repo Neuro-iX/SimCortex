@@ -1,14 +1,20 @@
 cff-version: 1.2.0
-message: "If you use SimCortex in your research, please cite the published SimCortex paper below. The SimCortex v2 journal manuscript is listed under references."
+message: "If you use SimCortex in your research, please cite the published SimCortex paper below. The SimCortex v2 journal manuscript and associated reproducibility dataset are listed under references."
 title: "SimCortex"
 type: software
 version: "2.0.0"
+date-released: "2026-09-11"
+doi: "10.5281/zenodo.22710781"
 
 authors:
   - family-names: "Moradkhani"
     given-names: "Kaveh"
+    orcid: "https://orcid.org/0009-0002-4372-073X"
+    affiliation: "École de technologie supérieure"
   - family-names: "Bouix"
     given-names: "Sylvain"
+    orcid: "https://orcid.org/0000-0003-1326-6054"
+    affiliation: "École de technologie supérieure"
 
 repository-code: "https://github.com/Neuro-iX/SimCortex"
 url: "https://github.com/Neuro-iX/SimCortex"
@@ -42,3 +48,14 @@ references:
         given-names: "Sylvain"
     journal: "Medical Image Analysis"
     notes: "Submitted to Medical Image Analysis."
+
+  - type: data
+    title: "SimCortex Reproducibility Dataset for Cortical Surface Reconstruction"
+    authors:
+      - family-names: "Moradkhani"
+        given-names: "Kaveh"
+      - family-names: "Bouix"
+        given-names: "Sylvain"
+    year: 2026
+    doi: "10.20383/103.01769"
+    url: "https://doi.org/10.20383/103.01769"
